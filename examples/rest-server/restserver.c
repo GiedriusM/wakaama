@@ -41,6 +41,41 @@ static void sigint_handler(int signo)
     restserver_quit = 1;
 }
 
+/**
+ * Function called if we get a SIGPIPE. Does nothing.
+ *
+ * @param sig will be SIGPIPE (ignored)
+ */
+static void
+catcher (int sig)
+{
+  /* do nothing */
+}
+
+
+/**
+ * setup handlers to ignore SIGPIPE.
+ */
+#ifndef MINGW
+static void
+ignore_sigpipe ()
+{
+  struct sigaction oldsig;
+  struct sigaction sig;
+
+  sig.sa_handler = &catcher;
+  sigemptyset (&sig.sa_mask);
+#ifdef SA_INTERRUPT
+  sig.sa_flags = SA_INTERRUPT;  /* SunOS */
+#else
+  sig.sa_flags = SA_RESTART;
+#endif
+  if (0 != sigaction (SIGPIPE, &sig, &oldsig))
+    fprintf (stderr,
+             "Failed to install SIGPIPE handler: %s\n", strerror (errno));
+}
+#endif
+
 const char * binding_to_string(lwm2m_binding_t bind)
 {
     switch (bind)
@@ -199,6 +234,11 @@ int main(int argc, char *argv[])
     rest_context_t rest;
 
     signal(SIGINT, sigint_handler);
+#ifndef MINGW
+    ignore_sigpipe ();
+#endif
+
+
     rest_init(&rest);
 
     /* Socket section */
