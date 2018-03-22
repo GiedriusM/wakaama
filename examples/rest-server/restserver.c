@@ -38,44 +38,49 @@
 static volatile int restserver_quit;
 static void sigint_handler(int signo)
 {
+    puts("SIGINT occurs.\n");
     restserver_quit = 1;
 }
 
 /**
- * Function called if we get a SIGPIPE. Does nothing.
- *
+ * Function called if we get a SIGPIPE. Does counting.
+ * exmp. killall -13  restserver
  * @param sig will be SIGPIPE (ignored)
  */
-static void
-catcher (int sig)
+static void catcher(int sig)
 {
-  /* do nothing */
+    static volatile int sigpipe_cnt;
+    sigpipe_cnt++;
+    fprintf(stderr, "SIGPIPE occurs: %d times.\n",sigpipe_cnt); /* do nothing */
 }
 
 
 /**
  * setup handlers to ignore SIGPIPE.
  */
-#ifndef MINGW
-static void
-ignore_sigpipe ()
+static void init_signals(void)
 {
-  struct sigaction oldsig;
-  struct sigaction sig;
-  memset(&sig, 0, sizeof(sig));
+    struct sigaction oldsig;
+    struct sigaction sig;
 
-  sig.sa_handler = &catcher;
-  sigemptyset (&sig.sa_mask);
-#ifdef SA_INTERRUPT
-  sig.sa_flags = SA_INTERRUPT;  /* SunOS */
-#else
-  sig.sa_flags = SA_RESTART;
-#endif
-  if (0 != sigaction (SIGPIPE, &sig, &oldsig))
-    fprintf (stderr,
-             "Failed to install SIGPIPE handler: %s\n", strerror (errno));
+    //signal(SIGINT, sigint_handler);//automaticaly do SA_RESTART, we must break system functions exmp. select
+    memset(&sig, 0, sizeof(sig));
+    sig.sa_handler = &sigint_handler;
+    sigemptyset(&sig.sa_mask);
+    sig.sa_flags = 0;//break system functions open, read ... if SIGINT occurs
+    if (0 != sigaction(SIGINT, &sig, &oldsig)) {
+        fprintf(stderr, "Failed to install SIGINT handler: %s\n", strerror(errno));
+    }
+
+    memset(&sig, 0, sizeof(sig));
+    sig.sa_handler = &catcher;
+    sigemptyset(&sig.sa_mask);
+    sig.sa_flags = SA_RESTART;//dont break system functions open, read ... if SIGPIPE occurs SA_INTERRUPT, but select return interrupted
+    if (0 != sigaction(SIGPIPE, &sig, &oldsig)) {
+        fprintf(stderr, "Failed to install SIGPIPE handler: %s\n", strerror(errno));
+    }
 }
-#endif
+
 
 const char * binding_to_string(lwm2m_binding_t bind)
 {
@@ -234,10 +239,8 @@ int main(int argc, char *argv[])
     int res;
     rest_context_t rest;
 
-    signal(SIGINT, sigint_handler);
-#ifndef MINGW
-    ignore_sigpipe ();
-#endif
+
+    init_signals();
 
 
     rest_init(&rest);
@@ -322,11 +325,14 @@ int main(int argc, char *argv[])
         if (res < 0)
         {
             if (errno == EINTR) {
+                fprintf(stderr, "EINTR select() return: %d \n", res);
                 continue;
             }
 
             fprintf(stderr, "select() error: %d\n", res);
         }
+        else
+            fprintf(stderr, "select() return: %d\n", res);
 
         if (FD_ISSET(sock, &readfds))
         {
