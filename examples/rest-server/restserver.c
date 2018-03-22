@@ -38,7 +38,7 @@
 static volatile int restserver_quit;
 static void sigint_handler(int signo)
 {
-    puts("SIGINT occurs.\n");
+    printf("Occurs SIGNAL no: %d\n",signo);
     restserver_quit = 1;
 }
 
@@ -47,16 +47,16 @@ static void sigint_handler(int signo)
  * exmp. killall -13  restserver
  * @param sig will be SIGPIPE (ignored)
  */
-static void catcher(int sig)
+static void sigpipe_handler(int sig)
 {
     static volatile int sigpipe_cnt;
     sigpipe_cnt++;
-    fprintf(stderr, "SIGPIPE occurs: %d times.\n",sigpipe_cnt); /* do nothing */
+    fprintf(stderr, "SIGPIPE occurs: %d times.\n",sigpipe_cnt);
 }
 
 
 /**
- * setup handlers to ignore SIGPIPE.
+ * setup handlers to ignore SIGPIPE, handle SIGINT...
  */
 static void init_signals(void)
 {
@@ -72,8 +72,14 @@ static void init_signals(void)
         fprintf(stderr, "Failed to install SIGINT handler: %s\n", strerror(errno));
     }
 
+    //to stop valgrind
+    if (0 != sigaction(SIGTERM, &sig, &oldsig)) {
+        fprintf(stderr, "Failed to install SIGINT handler: %s\n", strerror(errno));
+    }
+
+
     memset(&sig, 0, sizeof(sig));
-    sig.sa_handler = &catcher;
+    sig.sa_handler = &sigpipe_handler;
     sigemptyset(&sig.sa_mask);
     sig.sa_flags = SA_RESTART;//dont break system functions open, read ... if SIGPIPE occurs SA_INTERRUPT, but select return interrupted
     if (0 != sigaction(SIGPIPE, &sig, &oldsig)) {
