@@ -38,7 +38,6 @@
 static volatile int restserver_quit;
 static void sigint_handler(int signo)
 {
-    printf("Occurs SIGNAL no: %d\n",signo);
     restserver_quit = 1;
 }
 
@@ -331,14 +330,11 @@ int main(int argc, char *argv[])
         if (res < 0)
         {
             if (errno == EINTR) {
-                fprintf(stderr, "EINTR select() return: %d \n", res);
                 continue;
             }
 
             fprintf(stderr, "select() error: %d\n", res);
         }
-        else
-            fprintf(stderr, "select() return: %d\n", res);
 
         if (FD_ISSET(sock, &readfds))
         {
