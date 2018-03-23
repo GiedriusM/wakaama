@@ -190,7 +190,7 @@ void output_buffer(FILE * stream,
         int j;
 
         print_indent(stream, indent);
-        memcpy(array, buffer+i, ( i+16 > length ? length-i : 16) );//memcpy(array, buffer+i, 16);valgrind problem
+        memcpy(array, buffer+i, 16);
         for (j = 0 ; j < 16 && i+j < length; j++)
         {
             fprintf(stream, "%02X ", array[j]);
