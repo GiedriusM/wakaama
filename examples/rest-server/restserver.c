@@ -34,13 +34,19 @@
 
 #include "connection.h"
 #include "restserver.h"
+#include "rest-ssdp.h"
 
 static volatile int restserver_quit;
 static void sigint_handler(int signo)
 {
     restserver_quit = 1;
+    printf("Received signal No.: %d\n",signo);
 }
 
+volatile int get_restserver_quit(void)
+{
+    return restserver_quit;
+}
 /**
  * Function called if we get a SIGPIPE. Does counting.
  * exmp. killall -13  restserver
@@ -249,6 +255,8 @@ int main(int argc, char *argv[])
 
 
     rest_init(&rest);
+
+    init_ssdp();
 
     /* Socket section */
     sock = create_socket("5555", AF_INET6);

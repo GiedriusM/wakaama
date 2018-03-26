@@ -17,6 +17,7 @@ add_definitions(${SHARED_DEFINITIONS} ${WAKAAMA_DEFINITIONS})
 include_directories (${WAKAAMA_SOURCES_DIR} ${SHARED_INCLUDE_DIRS})
 
 SET(SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/rest-ssdp.c
     ${CMAKE_CURRENT_LIST_DIR}/restserver.c
     ${CMAKE_CURRENT_LIST_DIR}/rest-core.c
     ${CMAKE_CURRENT_LIST_DIR}/rest-core-types.c
@@ -33,7 +34,7 @@ find_library(ULFIUS_LIB ulfius)
 find_library(JANSSON_LIB jansson)
 find_library(BASE64_LIB b64)
 target_compile_options(restserver PRIVATE "-Wall")
-target_link_libraries(restserver "${ULFIUS_LIB}" "${JANSSON_LIB}" "${BASE64_LIB}")
+target_link_libraries(restserver pthread "${ULFIUS_LIB}" "${JANSSON_LIB}" "${BASE64_LIB}")
 
 if(CODE_COVERAGE)
     target_compile_options(restserver PRIVATE "-coverage")
