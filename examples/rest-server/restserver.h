@@ -26,6 +26,7 @@
 #define RESTSERVER_H
 
 #include <liblwm2m.h>
+#define _GNU_SOURCE
 #include <ulfius.h>
 
 #include "http_codes.h"

@@ -29,8 +29,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <liblwm2m.h>
-#include <ulfius.h>
 
 #include "connection.h"
 #include "restserver.h"

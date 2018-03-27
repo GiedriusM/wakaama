@@ -24,12 +24,7 @@
  * OR SELL ANYTHING THAT IT MAY DESCRIBE, IN WHOLE OR IN PART.
  */
 
-
-
-#include "rest-ssdp.h"
-#include "restserver.h"
-
-//#define _GNU_SOURCE
+#define _GNU_SOURCE
 #include <pthread.h>
 
 #include <sys/types.h>
@@ -42,6 +37,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#include "rest-ssdp.h"
+#include "restserver.h"
 
 
 
@@ -73,9 +71,7 @@ void init_ssdp(void)
     else{
         pthread_setname_np(thread_h, "ssdp_server");
         printf("\n Thread created successfully\n");
-
     }
-
 }
 
 static int parse_buf_lines(char* buf)
@@ -84,11 +80,12 @@ static int parse_buf_lines(char* buf)
     const int  lines_size = (sizeof(lines) / sizeof(lines[0])) ;
     int i = 0;
     memset(lines, 0, sizeof(lines));
+    char* buf_save=buf;
 
-    lines[i] = strtok(buf, "\r\n");
+    lines[i] = strtok_r(buf, "\r\n",&buf_save);
 
     while (lines[i] != NULL && i < lines_size  ) {
-        lines[++i] = strtok(NULL, "\r\n");
+        lines[++i] = strtok_r(NULL, "\r\n",&buf_save);
     }
 
     if (strcasecmp("M-SEARCH * HTTP/1.1", lines[0]) != 0) {
