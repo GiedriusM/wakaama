@@ -32,6 +32,7 @@
 #include "rest-core-types.h"
 #include "rest-utils.h"
 
+#define UDP_LISTENER_PORT_NB "5555"
 
 typedef struct _u_request ulfius_req_t;
 typedef struct _u_response ulfius_resp_t;
