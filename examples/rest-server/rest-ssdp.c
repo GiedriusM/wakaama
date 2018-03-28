@@ -214,7 +214,7 @@ static void* Udp6Listener(void *arg)
             continue;
         }
 
-        if (nbytes < MSGBUFSIZE - 1)
+        if (nbytes < (MSGBUFSIZE - 1) )
             msgbuf[nbytes] = '\0';
         else
             msgbuf[MSGBUFSIZE - 1] = '\0';
