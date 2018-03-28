@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "rest-ssdp.h"
 #include "restserver.h"
@@ -45,8 +46,12 @@
 #define HELLO_GROUP "ff02::c"
 #define MSGBUFSIZE 1025
 
-extern volatile int get_restserver_quit(void);
+//extern volatile int get_restserver_quit(void);
 static void* Udp6Listener(void *arg);
+#define QUIT_SIGNAL_NO SIGUSR1
+static volatile int ssdp_quit=0;
+static volatile pthread_t thread_h;
+static volatile pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const char *response="HTTP/1.1 200 OK\r\n"
                      "CACHE-CONTROL: max-age=60\r\n"
@@ -58,18 +63,44 @@ const char *response="HTTP/1.1 200 OK\r\n"
                      "\r\n";
 
 
-void init_ssdp(void)
+
+void start_ssdp(void)
 {
-    pthread_t thread_h;
-    int err = pthread_create(&thread_h, NULL, &Udp6Listener, NULL);
+    pthread_mutex_lock((pthread_mutex_t *)&mutex);
+    if(thread_h != 0)
+        stop_ssdp();
+
+
+    int err = pthread_create((pthread_t*)&thread_h, NULL, &Udp6Listener, NULL);
     if (err != 0) {
         fprintf(stderr, "\ncan't create thread :[%s]", strerror(err));
+        pthread_mutex_unlock((pthread_mutex_t *)&mutex);
         exit(EXIT_FAILURE);
     }
     else{
         pthread_setname_np(thread_h, "ssdp_server");
         printf("\n Thread created successfully\n");
     }
+    pthread_mutex_unlock((pthread_mutex_t *)&mutex);
+}
+
+void stop_ssdp(void)
+{
+    pthread_mutex_lock((pthread_mutex_t *)&mutex);
+
+    pthread_kill(thread_h,QUIT_SIGNAL_NO);
+    //ssdp_quit=1;
+
+    if(thread_h != 0)
+    {
+        pthread_join(thread_h,NULL);
+        thread_h = 0;
+    }
+    if(ssdp_quit)
+        ssdp_quit=0;
+    else
+        fprintf(stderr, "\nCan't stop ssdp thread");
+    pthread_mutex_unlock((pthread_mutex_t *)&mutex);
 }
 
 static int parse_buf_lines(char* buf)
@@ -101,6 +132,11 @@ static int parse_buf_lines(char* buf)
     return 0;
 }
 
+static void ssdp_quit_sig_handler(int signo)
+{
+    ssdp_quit=1;
+}
+
 
 static void* Udp6Listener(void *arg)
 {
@@ -118,6 +154,21 @@ static void* Udp6Listener(void *arg)
     struct addrinfo* localAddr = 0; /* Local address to bind to */
     struct addrinfo* multicastAddr = 0; /* Multicast Address */
     int yes = 1;
+/////////////////////////////////////
+    ssdp_quit=0;
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+
+    sa.sa_handler = &ssdp_quit_sig_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    if (0 != sigaction(QUIT_SIGNAL_NO, &sa, NULL) ) {
+        perror("sigaction");
+        exit(EXIT_FAILURE);
+    }
+/////////////////////////////////////
+
 
     /* Resolve the multicast group address */
     hints.ai_family = PF_UNSPEC;
@@ -204,7 +255,7 @@ static void* Udp6Listener(void *arg)
     printf("Listening on all addresses\n");
 
     /* now just enter a read-print loop */
-    while (!get_restserver_quit())
+    while (!ssdp_quit)
     {
         addrlen = sizeof(clientaddr);
         int nbytes = recvfrom(sock, msgbuf, MSGBUFSIZE - 1, 0, (struct sockaddr *) &clientaddr, &addrlen);

@@ -25,6 +25,7 @@
 #ifndef EXAMPLES_REST_SERVER_REST_SSDP_H_
 #define EXAMPLES_REST_SERVER_REST_SSDP_H_
 
-void init_ssdp(void);
+void start_ssdp(void);
+void stop_ssdp(void);
 
 #endif /* EXAMPLES_REST_SERVER_REST_SSDP_H_ */

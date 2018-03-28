@@ -41,10 +41,6 @@ static void sigint_handler(int signo)
     printf("Received signal No.: %d\n",signo);
 }
 
-volatile int get_restserver_quit(void)
-{
-    return restserver_quit;
-}
 /**
  * Function called if we get a SIGPIPE. Does counting.
  * exmp. killall -13  restserver
@@ -254,7 +250,7 @@ int main(int argc, char *argv[])
 
     rest_init(&rest);
 
-    init_ssdp();
+    start_ssdp();
 
     /* Socket section */
     sock = create_socket(UDP_LISTENER_PORT_NB, AF_INET6);
@@ -351,6 +347,7 @@ int main(int argc, char *argv[])
         }
 
     }
+    stop_ssdp();
 
     ulfius_stop_framework(&instance);
     ulfius_clean_instance(&instance);
