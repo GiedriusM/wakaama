@@ -67,8 +67,8 @@ const char *response="HTTP/1.1 200 OK\r\n"
 void start_ssdp(void)
 {
     pthread_mutex_lock((pthread_mutex_t *)&mutex);
-    if(thread_h != 0)
-        stop_ssdp();
+    //if(thread_h != 0) double lock, not recursive mutex
+        //stop_ssdp();
 
 
     int err = pthread_create((pthread_t*)&thread_h, NULL, &Udp6Listener, NULL);
