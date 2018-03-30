@@ -250,7 +250,12 @@ int main(int argc, char *argv[])
 
     rest_init(&rest);
 
-    start_ssdp();
+
+    if (start_ssdp(UDP_LISTENER_PORT_NB) != SSDP_OK)
+    {
+        fprintf(stderr, "Failed to start ssdp server!\n");
+        return -1;
+    }
 
     /* Socket section */
     sock = create_socket(UDP_LISTENER_PORT_NB, AF_INET6);

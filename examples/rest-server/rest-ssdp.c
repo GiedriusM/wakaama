@@ -22,9 +22,7 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE
 #include <pthread.h>
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -38,20 +36,17 @@
 #include <signal.h>
 
 #include "rest-ssdp.h"
-#include "restserver.h"
 
 
-
-#define HELLO_PORT "1900"
-#define HELLO_GROUP "ff02::c"
+#define REST_SSDP_PORT "1900"
+#define REST_SSDP_GROUP "ff02::c"
 #define MSGBUFSIZE 1025
 
-//extern volatile int get_restserver_quit(void);
-static void* Udp6Listener(void *arg);
+static void* udp6_listener(void *arg);
 #define QUIT_SIGNAL_NO SIGUSR1
 static volatile int ssdp_quit=0;
-static volatile pthread_t thread_h;
-static volatile pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_t thread_h=0;//must be used from main only (start...stop)
+
 
 const char *response="HTTP/1.1 200 OK\r\n"
                      "CACHE-CONTROL: max-age=60\r\n"
@@ -64,43 +59,40 @@ const char *response="HTTP/1.1 200 OK\r\n"
 
 
 
-void start_ssdp(void)
+ssdp_status_t start_ssdp(const char* udp_port_nb_str)
 {
-    pthread_mutex_lock((pthread_mutex_t *)&mutex);
-    //if(thread_h != 0) double lock, not recursive mutex
-        //stop_ssdp();
+    if(thread_h != 0)
+        stop_ssdp();
 
-
-    int err = pthread_create((pthread_t*)&thread_h, NULL, &Udp6Listener, NULL);
+    int err = pthread_create(&thread_h, NULL, &udp6_listener, (void*)udp_port_nb_str);
     if (err != 0) {
         fprintf(stderr, "\ncan't create thread :[%s]", strerror(err));
-        pthread_mutex_unlock((pthread_mutex_t *)&mutex);
-        exit(EXIT_FAILURE);
+        return SSDP_ERROR;//exit(EXIT_FAILURE);
     }
     else{
         pthread_setname_np(thread_h, "ssdp_server");
         printf("\n Thread created successfully\n");
     }
-    pthread_mutex_unlock((pthread_mutex_t *)&mutex);
+    return SSDP_OK;
+
 }
 
 void stop_ssdp(void)
 {
-    pthread_mutex_lock((pthread_mutex_t *)&mutex);
-
-    pthread_kill(thread_h,QUIT_SIGNAL_NO);
-    //ssdp_quit=1;
-
     if(thread_h != 0)
     {
-        pthread_join(thread_h,NULL);
-        thread_h = 0;
+        pthread_kill(thread_h,QUIT_SIGNAL_NO);
+
+        if(thread_h != 0)
+        {
+            pthread_join(thread_h,NULL);
+            thread_h = 0;
+        }
+        if(ssdp_quit)
+            ssdp_quit=0;
+        else
+            fprintf(stderr, "\nCan't stop ssdp thread");
     }
-    if(ssdp_quit)
-        ssdp_quit=0;
-    else
-        fprintf(stderr, "\nCan't stop ssdp thread");
-    pthread_mutex_unlock((pthread_mutex_t *)&mutex);
 }
 
 static int parse_buf_lines(char* buf)
@@ -138,7 +130,7 @@ static void ssdp_quit_sig_handler(int signo)
 }
 
 
-static void* Udp6Listener(void *arg)
+static void* udp6_listener(void *arg)
 {
     char msgbuf[MSGBUFSIZE];
     socklen_t addrlen;
@@ -146,15 +138,16 @@ static void* Udp6Listener(void *arg)
     char clienthost[NI_MAXHOST];
     char clientservice[NI_MAXSERV];
 
-    char* multicastIP = HELLO_GROUP;
-    char* multicastPort = HELLO_PORT;
+    char* multicastIP = REST_SSDP_PORT;
+    char* multicastPort = REST_SSDP_PORT;
+    const char* udpServerPort = (char*)arg; //UDP_LISTENER_PORT_NB
 
     int sock;
     struct addrinfo hints = { 0 }; /* Hints for name lookup */
     struct addrinfo* localAddr = 0; /* Local address to bind to */
     struct addrinfo* multicastAddr = 0; /* Multicast Address */
     int yes = 1;
-/////////////////////////////////////
+
     ssdp_quit=0;
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
@@ -167,7 +160,6 @@ static void* Udp6Listener(void *arg)
         perror("sigaction");
         exit(EXIT_FAILURE);
     }
-/////////////////////////////////////
 
 
     /* Resolve the multicast group address */
@@ -281,7 +273,7 @@ static void* Udp6Listener(void *arg)
         puts(msgbuf);
 
         if (parse_buf_lines(msgbuf)) {
-            snprintf(msgbuf, sizeof(msgbuf), response, clienthost, UDP_LISTENER_PORT_NB);//currently return client host address IPV6 and COAP port number to get local host, maybe need use getifaddrs()
+            snprintf(msgbuf, sizeof(msgbuf), response, clienthost, udpServerPort);//currently return client host address IPV6 and COAP port number to get local host, maybe need use getifaddrs()
             puts(msgbuf);
             nbytes = sendto(sock, msgbuf, strlen(msgbuf), 0, (struct sockaddr *) &clientaddr, sizeof(clientaddr));
             if (nbytes < 1)
@@ -295,14 +287,14 @@ static void* Udp6Listener(void *arg)
         freeaddrinfo(localAddr);
     if (multicastAddr)
         freeaddrinfo(multicastAddr);
-
+    //thread_h=0; protect when user send signal USR1...not used now
     return (void*) 0;
 
     error: if (localAddr)
         freeaddrinfo(localAddr);
     if (multicastAddr)
         freeaddrinfo(multicastAddr);
-
+    //thread_h=0; protect when user send signal USR1...not used now
     return (void*) -1;
 }
 

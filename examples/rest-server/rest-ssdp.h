@@ -25,7 +25,14 @@
 #ifndef EXAMPLES_REST_SERVER_REST_SSDP_H_
 #define EXAMPLES_REST_SERVER_REST_SSDP_H_
 
-void start_ssdp(void);
+typedef enum
+{
+    SSDP_OK = 0,
+    SSDP_ERROR,
+} ssdp_status_t;
+
+//start_ssdp and stop_ssdp must be used from main context only
+ssdp_status_t start_ssdp(const char* udp_port_nb_str);
 void stop_ssdp(void);
 
 #endif /* EXAMPLES_REST_SERVER_REST_SSDP_H_ */
