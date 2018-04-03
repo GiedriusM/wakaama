@@ -138,7 +138,7 @@ static void* udp6_listener(void *arg)
     char clienthost[NI_MAXHOST];
     char clientservice[NI_MAXSERV];
 
-    char* multicastIP = REST_SSDP_PORT;
+    char* multicastIP = REST_SSDP_GROUP;
     char* multicastPort = REST_SSDP_PORT;
     const char* udpServerPort = (char*)arg; //UDP_LISTENER_PORT_NB
 
@@ -294,6 +294,7 @@ static void* udp6_listener(void *arg)
         freeaddrinfo(localAddr);
     if (multicastAddr)
         freeaddrinfo(multicastAddr);
+    close(sock);
     //thread_h=0; protect when user send signal USR1...not used now
     return (void*) -1;
 }
