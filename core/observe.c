@@ -787,6 +787,7 @@ static lwm2m_observation_t * prv_findObservationByURI(lwm2m_client_t * clientP,
 void observe_remove(lwm2m_observation_t * observationP)
 {
     LOG("Entering");
+    lwm2m_printf("ObsvP: %p id: %d\n",observationP,observationP->id);
     observationP->clientP->observationList = (lwm2m_observation_t *) LWM2M_LIST_RM(observationP->clientP->observationList, observationP->id, NULL);
     lwm2m_free(observationP);
 }
@@ -830,11 +831,14 @@ static void prv_obsRequestCallback(lwm2m_transaction_t * transacP,
 
     if (code != COAP_205_CONTENT)
     {
-        observationP->callback(observationP->clientP->internalID,
+        if(observationP->callback)
+            observationP->callback(observationP->clientP->internalID,
                                &observationP->uri,
                                code,
                                LWM2M_CONTENT_TEXT, NULL, 0,
                                observationP->userData);
+        else
+            fprintf(stderr,"[%s:%d] ..........Program used to crash here because of segmentation fault her............\n",__func__,__LINE__);
         observe_remove(observationP);
     }
     else

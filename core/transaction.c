@@ -264,6 +264,7 @@ void transaction_remove(lwm2m_context_t * contextP,
                         lwm2m_transaction_t * transacP)
 {
     LOG("Entering");
+    lwm2m_printf(" m2mP: %p trnP: %p mID: %d \n",contextP,transacP,transacP->mID);
     contextP->transactionList = (lwm2m_transaction_t *) LWM2M_LIST_RM(contextP->transactionList, transacP->mID, NULL);
     transaction_free(transacP);
 }
