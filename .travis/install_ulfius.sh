@@ -13,3 +13,5 @@ make && sudo make install
 cd ../..
 make
 sudo make install
+
+ls -la /usr/local/lib
