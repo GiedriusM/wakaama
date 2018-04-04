@@ -94,16 +94,6 @@ int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void
     /* Find requested client */
     name = u_map_get(req->map_url, "name");
     rest_lock(rest);
-    {
-        static volatile int FirstTime=1;
-        if(FirstTime){
-            unsigned int sleep_time=120;
-repeat_s:       sleep_time=sleep(sleep_time);
-            if(sleep_time!=0)
-                goto repeat_s;
-            FirstTime=0;
-        }
-    }
     client = rest_endpoints_find_client(rest->lwm2m->clientList, name);
     rest_unlock(rest);
     if (client == NULL)
