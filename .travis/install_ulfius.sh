@@ -1,6 +1,6 @@
 #!/bin/sh
 
-git clone https://github.com/babelouest/ulfius.git
+git clone -b v2.3.2 --single-branch https://github.com/babelouest/ulfius.git
 cd ulfius/
 git submodule update --init
 
@@ -13,5 +13,3 @@ make && sudo make install
 cd ../..
 make
 sudo make install
-
-ls -la /usr/local/lib
