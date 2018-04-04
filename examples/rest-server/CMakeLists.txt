@@ -35,6 +35,7 @@ find_library(ULFIUS_LIB ulfius)
 find_library(JANSSON_LIB jansson)
 find_library(BASE64_LIB b64)
 target_compile_options(restserver PRIVATE "-Wall")
+target_compile_options(restserver PRIVATE "-pthread")
 target_link_libraries(restserver pthread "${ULFIUS_LIB}" "${JANSSON_LIB}" "${BASE64_LIB}")
 
 if(CODE_COVERAGE)
