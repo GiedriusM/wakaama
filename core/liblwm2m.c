@@ -366,7 +366,6 @@ int lwm2m_step(lwm2m_context_t * contextP,
 {
     time_t tv_sec;
 
-
     LOG_ARG("timeoutP: %" PRId64, *timeoutP);
     tv_sec = lwm2m_gettime();
     if (tv_sec < 0) return COAP_500_INTERNAL_SERVER_ERROR;
