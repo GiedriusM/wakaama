@@ -27,7 +27,8 @@ $ sudo make install
 3. Build LwM2M-REST server
 ```
 $ git clone https://github.com/8devices/wakaama.git
-$ cd wakaama/mkdir build
+$ cd wakaama/
+$ mkdir build
 $ cd build/
 $ cmake ../examples/rest-server
 $ make
