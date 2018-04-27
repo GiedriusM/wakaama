@@ -290,7 +290,11 @@ The code in this directory is licensed under the MIT license, however please not
  
 * **Error Response:**
 
-  * **Code:** 400 BAD REQUEST - invalid JSON object format<br />
+  * **Code:** 400 BAD REQUEST - one of following:
+    - invalid JSON object format
+    - given callback is not accessible
+    - invalid headers provided
+  <br />
 
   OR
 
@@ -300,6 +304,32 @@ The code in this directory is licensed under the MIT license, however please not
 
   ```shell
   $ curl http://localhost:8888/notification/callback -X PUT -H "Content-Type: application/json" --data '{"url": "http://localhost:9999/my_callback", "headers": {}}'
+  ```
+
+**Delete notification callback**
+----
+  Delete currently registered callback url and headers.
+
+* **URL**
+
+  /notification/callback
+
+* **Method:**
+  
+  `DELETE`
+
+* **Success Response:**
+
+  * **Code:** 204 SUCCESS - Successfully removed callback <br />
+ 
+* **Error Response:**
+
+  * **Code:** 404 NOT FOUND - no callback is registered <br />
+
+* **Sample Call:**
+
+  ```shell
+  $ curl http://localhost:8888/notification/callback -X DELETE
   ```
 
 **Check notification callback**
