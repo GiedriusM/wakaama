@@ -60,7 +60,7 @@ typedef struct
     rest_list_t *observeList;
 } rest_context_t;
 
-lwm2m_client_t * rest_endpoints_find_client(lwm2m_client_t *list, const char *name);
+lwm2m_client_t *rest_endpoints_find_client(lwm2m_client_t *list, const char *name);
 
 int rest_endpoints_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context);
 
@@ -75,17 +75,22 @@ void rest_notify_deregistration(rest_context_t *rest, rest_notif_deregistration_
 void rest_notify_timeout(rest_context_t *rest, rest_notif_timeout_t *timeout);
 void rest_notify_async_response(rest_context_t *rest, rest_notif_async_response_t *resp);
 
-json_t * rest_notifications_json(rest_context_t *rest);
+json_t *rest_notifications_json(rest_context_t *rest);
 
 void rest_notifications_clear(rest_context_t *rest);
 
 int rest_notifications_get_callback_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context);
 int rest_notifications_put_callback_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context);
+int rest_notifications_delete_callback_cb(const ulfius_req_t *req, ulfius_resp_t *resp,
+                                          void *context);
+
 
 int rest_notifications_pull_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context);
 
 int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context);
 int rest_subscriptions_delete_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context);
+
+int rest_version_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context);
 
 void rest_init(rest_context_t *rest);
 void rest_cleanup(rest_context_t *rest);

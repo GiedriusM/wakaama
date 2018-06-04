@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2017 8devices
+ * Copyright (c) 2018 8devices
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,24 +22,45 @@
  * SOFTWARE.
  */
 
-#include "rest-utils.h"
+#include <stdio.h>
+#include <stdarg.h>
 
-#include "restserver.h"
+#include "logging.h"
 
+static logging_level_t current_level;
 
-int coap_to_http_status(int status)
+int logging_init(logging_level_t logging_level)
 {
-    switch (status)
+    current_level = logging_level;
+    log_message(LOG_LEVEL_TRACE, "Logging level set to %d\n", logging_level);
+
+    if (logging_level > LOG_LEVEL_TRACE)
     {
-    case COAP_204_CHANGED:
-    case COAP_205_CONTENT:
-        return HTTP_200_OK;
+        log_message(LOG_LEVEL_WARN, "Unexpected high log level \"%d\".\n", logging_level);
+    };
 
-    case COAP_404_NOT_FOUND:
-        return HTTP_404_NOT_FOUND;
-
-    default:
-        return -(((status >> 5) & 0x7) * 100 + (status & 0x1F));
-    }
+    return 0;
 }
 
+int log_message(logging_level_t logging_level, char *format, ...)
+{
+    va_list arg_ptr;
+    va_start(arg_ptr, format);
+
+    if (logging_level <= current_level)
+    {
+        if (logging_level <= LOG_LEVEL_ERROR)
+        {
+            vfprintf(stderr, format, arg_ptr);
+        }
+        else
+        {
+            vfprintf(stdout, format, arg_ptr);
+        }
+        return 0;
+    }
+
+    va_end(arg_ptr);
+
+    return -1;
+}

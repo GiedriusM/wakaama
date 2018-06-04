@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2017 8devices
+ * Copyright (c) 2018 8devices
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,56 +22,43 @@
  * SOFTWARE.
  */
 
-#ifndef REST_LIST_H
-#define REST_LIST_H
+#ifndef SETTINGS_H
+#define SETTINGS_H
 
-#include <pthread.h>
+#include <stdint.h>
+#include <string.h>
+#include <jansson.h>
+#include <argp.h>
 
-
-typedef struct rest_list_entry_t
-{
-    struct rest_list_entry_t *next;
-    void *data;
-} rest_list_entry_t;
+#include "logging.h"
 
 typedef struct
 {
-    pthread_mutex_t mutex;
-    rest_list_entry_t *head;
-} rest_list_t;
+    uint16_t port;
+} http_settings_t;
 
-/**
- * This function creates new list resource.
- *
- * @return Pointer to a new list instance or NULL on error
- *
- */
-rest_list_t *rest_list_new(void);
+typedef struct
+{
+    uint16_t port;
+} coap_settings_t;
 
-/**
- * This functions deletes list resource.
- *
- * @param[in]  list  Pointer to the list which will be delted
- *
- */
-void rest_list_delete(rest_list_t *list);
+typedef struct
+{
+    logging_level_t level;
+} logging_settings_t;
 
-/**
- * Adds data entry to the list.
- *
- * @param[in]  list  Pointer to the list
- * @param[in]  data  Data entry to be added
- */
-void rest_list_add(rest_list_t *list, void *data);
+typedef struct
+{
+    http_settings_t http;
+    coap_settings_t coap;
+    logging_settings_t logging;
+} settings_t;
 
-/**
- * Removes data entry from the list. The data MUST be present in the list,
- * otherwise an assertion error occurs. If there are multiple data entries,
- * then only one of them is removed.
- *
- * @param[in]  list  Pointer to the list
- * @param[in]  data  Data entry to be removed
- */
-void rest_list_remove(rest_list_t *list, void *data);
+int read_config(char *config_name, settings_t *settings);
 
-#endif // REST_LIST_H
+error_t parse_opt(int key, char *arg, struct argp_state *state);
+
+int settings_init(int argc, char *argv[], settings_t *settings);
+
+#endif // SETTINGS_H
+

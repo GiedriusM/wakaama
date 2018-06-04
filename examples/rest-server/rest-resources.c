@@ -23,15 +23,14 @@
  */
 
 #include <assert.h>
-#include <b64/cencode.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/syscall.h>
 #include <linux/random.h>
 
+#include "logging.h"
 #include "restserver.h"
-
 
 typedef struct
 {
@@ -43,27 +42,37 @@ typedef struct
 static int http_to_coap_format(const char *type)
 {
     if (type == NULL)
+    {
         return -1;
+    }
 
     if (strcmp(type, "application/vnd.oma.lwm2m+tlv") == 0)
+    {
         return LWM2M_CONTENT_TLV;
+    }
 
     if (strcmp(type, "application/vnd.oma.lwm2m+json") == 0)
+    {
         return LWM2M_CONTENT_JSON;
+    }
 
     if (strcmp(type, "application/octet-stream") == 0)
+    {
         return LWM2M_CONTENT_OPAQUE;
+    }
 
     return -1;
 }
 
-static void rest_async_cb(uint16_t clientID, lwm2m_uri_t *uriP, int status, lwm2m_media_type_t format,
-                          uint8_t *data, int dataLength, void *context)
+static void rest_async_cb(uint16_t clientID, lwm2m_uri_t *uriP, int status,
+                          lwm2m_media_type_t format, uint8_t *data, int dataLength,
+                          void *context)
 {
     rest_async_context_t *ctx = (rest_async_context_t *)context;
     int err;
 
-    fprintf(stdout, "[ASYNC-RESPONSE] id=%s status=%d\n", ctx->response->id, coap_to_http_status(status));
+    log_message(LOG_LEVEL_INFO, "[ASYNC-RESPONSE] id=%s status=%d\n",
+                ctx->response->id, coap_to_http_status(status));
 
     rest_list_remove(ctx->rest->pendingResponseList, ctx->response);
 
@@ -81,10 +90,11 @@ static void rest_async_cb(uint16_t clientID, lwm2m_uri_t *uriP, int status, lwm2
     free(ctx);
 }
 
-int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context)
+static int rest_resources_rwe_cb_unsafe(rest_context_t *rest,
+                                        const ulfius_req_t *req, ulfius_resp_t *resp)
 {
-    rest_context_t *rest = (rest_context_t *)context;
-    enum {
+    enum
+    {
         RES_ACTION_UNDEFINED,
         RES_ACTION_READ,
         RES_ACTION_WRITE,
@@ -111,17 +121,17 @@ int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *co
 
     if (strcmp(req->http_verb, "GET") == 0)
     {
-        fprintf(stdout, "[READ-REQUEST] %s\n", req->http_url);
+        log_message(LOG_LEVEL_INFO, "[READ-REQUEST] %s\n", req->http_url);
         action = RES_ACTION_READ;
     }
     else if (strcmp(req->http_verb, "PUT") == 0)
     {
-        fprintf(stdout, "[WRITE-REQUEST] %s\n", req->http_url);
+        log_message(LOG_LEVEL_INFO, "[WRITE-REQUEST] %s\n", req->http_url);
         action = RES_ACTION_WRITE;
     }
     else if (strcmp(req->http_verb, "POST") == 0)
     {
-        fprintf(stdout, "[EXEC-REQUEST] %s\n", req->http_url);
+        log_message(LOG_LEVEL_INFO, "[EXEC-REQUEST] %s\n", req->http_url);
         action = RES_ACTION_EXEC;
     }
     else
@@ -130,7 +140,7 @@ int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *co
         return U_CALLBACK_COMPLETE;
     }
 
-    if ((action == RES_ACTION_WRITE) || (action == RES_ACTION_EXEC))
+    if (action == RES_ACTION_WRITE)
     {
         format = http_to_coap_format(u_map_get_case(req->map_header, "Content-Type"));
         if (format == -1)
@@ -139,12 +149,30 @@ int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *co
             return U_CALLBACK_COMPLETE;
         }
     }
+    else if (action == RES_ACTION_EXEC)
+    {
+        if ((u_map_get_case(req->map_header, "Content-Type") == NULL)
+            || (strcmp(u_map_get_case(req->map_header, "Content-Type"), "text/plain") == 0))
+        {
+            format = LWM2M_CONTENT_TEXT;
+        }
+        else
+        {
+            ulfius_set_empty_body_response(resp, 415);
+            return U_CALLBACK_COMPLETE;
+        }
+    }
+
+    // Return 400 BAD REQUEST if request body length is 0
+    if ((action == RES_ACTION_WRITE) && (req->binary_body_length == 0))
+    {
+        ulfius_set_empty_body_response(resp, 400);
+        return U_CALLBACK_COMPLETE;
+    }
 
     /* Find requested client */
     name = u_map_get(req->map_url, "name");
-    rest_lock(rest);
     client = rest_endpoints_find_client(rest->lwm2m->clientList, name);
-    rest_unlock(rest);
     if (client == NULL)
     {
         ulfius_set_empty_body_response(resp, 410);
@@ -156,7 +184,7 @@ int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *co
 
     if (req->http_url == NULL || strlen(req->http_url) >= sizeof(path) || len >= sizeof(path))
     {
-        fprintf(stderr, "%s(): invalid http request (%s)!\n", __func__, req->http_url);
+        log_message(LOG_LEVEL_WARN, "%s(): invalid http request (%s)!\n", __func__, req->http_url);
         return U_CALLBACK_ERROR;
     }
 
@@ -168,7 +196,7 @@ int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *co
     }
 
     /* Extract and convert resource path */
-    strcpy(path, &req->http_url[len-1]);
+    strcpy(path, &req->http_url[len - 1]);
 
     if (lwm2m_stringToUri(path, strlen(path), &uri) == 0)
     {
@@ -181,15 +209,6 @@ int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *co
      * go through the cleanup section. See comment above.
      */
     const int err = U_CALLBACK_ERROR;
-
-    rest_lock(rest);
-
-    // Duplicated check just in case client was removed while rest was unlocked
-    client = rest_endpoints_find_client(rest->lwm2m->clientList, name);
-    if (client == NULL)
-    {
-        goto exit;
-    }
 
     /* Create response callback context and async response */
     async_context = malloc(sizeof(rest_async_context_t));
@@ -217,47 +236,35 @@ int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *co
     {
     case RES_ACTION_READ:
         res = lwm2m_dm_read(
-                rest->lwm2m, client->internalID, &uri,
-                rest_async_cb, async_context
-        );
-        if (res != 0)
-        {
-            goto exit;
-        }
+                  rest->lwm2m, client->internalID, &uri,
+                  rest_async_cb, async_context
+              );
         break;
 
     case RES_ACTION_WRITE:
-    case RES_ACTION_EXEC:
-        if (action == RES_ACTION_WRITE)
-        {
-            res = lwm2m_dm_write(
-                    rest->lwm2m, client->internalID, &uri,
-                    format, async_context->payload, req->binary_body_length,
-                    rest_async_cb, async_context
-            );
-        }
-        else if (action == RES_ACTION_EXEC)
-        {
-            res = lwm2m_dm_execute(
-                    rest->lwm2m, client->internalID, &uri,
-                    format, async_context->payload, req->binary_body_length,
-                    rest_async_cb, async_context
-            );
-        }
-        else
-        {
-            assert(false); // fail-fast on unhandled action
-        }
+        res = lwm2m_dm_write(
+                  rest->lwm2m, client->internalID, &uri,
+                  format, async_context->payload, req->binary_body_length,
+                  rest_async_cb, async_context
+              );
+        break;
 
-        if (res != 0)
-        {
-            goto exit;
-        }
+    case RES_ACTION_EXEC:
+        res = lwm2m_dm_execute(
+                  rest->lwm2m, client->internalID, &uri,
+                  format, async_context->payload, req->binary_body_length,
+                  rest_async_cb, async_context
+              );
         break;
 
     default:
         assert(false); // if this happens, there's an error in the logic
         break;
+    }
+
+    if (res != 0)
+    {
+        goto exit;
     }
     rest_list_add(rest->pendingResponseList, async_context->response);
 
@@ -265,8 +272,6 @@ int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *co
     json_object_set_new(jresponse, "async-response-id", json_string(async_context->response->id));
     ulfius_set_json_body_response(resp, 202, jresponse);
     json_decref(jresponse);
-
-    rest_unlock(rest);
 
     return U_CALLBACK_COMPLETE;
 
@@ -289,8 +294,18 @@ exit:
         }
     }
 
+    return err;
+}
+
+int rest_resources_rwe_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context)
+{
+    rest_context_t *rest = (rest_context_t *)context;
+    int ret;
+
+    rest_lock(rest);
+    ret = rest_resources_rwe_cb_unsafe(rest, req, resp);
     rest_unlock(rest);
 
-    return err;
+    return ret;
 }
 

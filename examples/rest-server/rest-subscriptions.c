@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "restserver.h"
+#include "logging.h"
 
 
 typedef struct
@@ -33,35 +34,38 @@ typedef struct
     rest_async_response_t *response;
 } rest_observe_context_t;
 
-static void rest_observe_cb(uint16_t clientID, lwm2m_uri_t *uriP, int count, lwm2m_media_type_t format,
-                          uint8_t *data, int dataLength, void *context)
+static void rest_observe_cb(uint16_t clientID, lwm2m_uri_t *uriP, int count,
+                            lwm2m_media_type_t format, uint8_t *data, int dataLength,
+                            void *context)
 {
     rest_observe_context_t *ctx = (rest_observe_context_t *)context;
     rest_async_response_t *response;
 
-    fprintf(stdout, "[OBSERVE-RESPONSE] id=%s count=%d data=%p\n", ctx->response->id, count, data);
+    log_message(LOG_LEVEL_INFO, "[OBSERVE-RESPONSE] id=%s count=%d data=%p\n",
+                ctx->response->id, count, data);
 
     response = rest_async_response_clone(ctx->response);
     if (response == NULL)
     {
-        fprintf(stdout, "[OBSERVE-RESPONSE] Error! Failed to clone a response.\n");
+        log_message(LOG_LEVEL_ERROR, "[OBSERVE-RESPONSE] Error! Failed to clone a response.\n");
         return;
     }
 
     // Where data is NULL, the count parameter represents CoAP error code
     rest_async_response_set(response,
-            (data == NULL) ? coap_to_http_status(count) : HTTP_200_OK,
-            data, dataLength);
+                            (data == NULL) ? coap_to_http_status(count) : HTTP_200_OK,
+                            data, dataLength);
 
     rest_notify_async_response(ctx->rest, response);
 }
 
-static void rest_unobserve_cb(uint16_t clientID, lwm2m_uri_t *uriP, int count, lwm2m_media_type_t format,
-                          uint8_t *data, int dataLength, void *context)
+static void rest_unobserve_cb(uint16_t clientID, lwm2m_uri_t *uriP, int count,
+                              lwm2m_media_type_t format, uint8_t *data, int dataLength,
+                              void *context)
 {
     rest_observe_context_t *ctx = (rest_observe_context_t *)context;
 
-    fprintf(stdout, "[UNOBSERVE-RESPONSE] id=%s\n", ctx->response->id);
+    log_message(LOG_LEVEL_INFO, "[UNOBSERVE-RESPONSE] id=%s\n", ctx->response->id);
 
     rest_list_remove(ctx->rest->observeList, ctx->response);
 
@@ -69,9 +73,10 @@ static void rest_unobserve_cb(uint16_t clientID, lwm2m_uri_t *uriP, int count, l
     free(ctx);
 }
 
-int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context)
+static int rest_subscriptions_put_cb_unsafe(rest_context_t *rest,
+                                            const ulfius_req_t *req,
+                                            ulfius_resp_t *resp)
 {
-    rest_context_t *rest = (rest_context_t *)context;
     const char *name;
     lwm2m_client_t *client;
     char path[100];
@@ -93,9 +98,7 @@ int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void
 
     /* Find requested client */
     name = u_map_get(req->map_url, "name");
-    rest_lock(rest);
     client = rest_endpoints_find_client(rest->lwm2m->clientList, name);
-    rest_unlock(rest);
     if (client == NULL)
     {
         ulfius_set_empty_body_response(resp, 404);
@@ -107,7 +110,7 @@ int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void
 
     if (req->http_url == NULL || strlen(req->http_url) >= sizeof(path) || len >= sizeof(path))
     {
-        fprintf(stderr, "%s(): invalid http request (%s)!\n", __func__, req->http_url);
+        log_message(LOG_LEVEL_WARN, "%s(): invalid http request (%s)!\n", __func__, req->http_url);
         return U_CALLBACK_ERROR;
     }
 
@@ -119,7 +122,7 @@ int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void
     }
 
     /* Extract and convert resource path */
-    strcpy(path, &req->http_url[len-1]);
+    strcpy(path, &req->http_url[len - 1]);
 
     if (lwm2m_stringToUri(path, strlen(path), &uri) == 0)
     {
@@ -133,22 +136,13 @@ int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void
      */
     const int err = U_CALLBACK_ERROR;
 
-    rest_lock(rest);
-
-    // Duplicate check just in case client was removed while rest was unlocked
-    client = rest_endpoints_find_client(rest->lwm2m->clientList, name);
-    if (client == NULL)
-    {
-        goto exit;
-    }
-
     // Search for existing registrations to prevent duplicates
     for (targetP = client->observationList; targetP != NULL; targetP = targetP->next)
     {
-        if (targetP->uri.objectId == uri.objectId
-         && targetP->uri.flag == uri.flag
-         && targetP->uri.instanceId == uri.instanceId
-         && targetP->uri.resourceId == uri.resourceId)
+        if (targetP->uri.flag == uri.flag &&
+            targetP->uri.objectId == uri.objectId &&
+            targetP->uri.instanceId == uri.instanceId &&
+            targetP->uri.resourceId == uri.resourceId)
         {
             observe_context = targetP->userData;
             break;
@@ -172,9 +166,9 @@ int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void
         }
 
         res = lwm2m_observe(
-                rest->lwm2m, client->internalID, &uri,
-                rest_observe_cb, observe_context
-        );
+                  rest->lwm2m, client->internalID, &uri,
+                  rest_observe_cb, observe_context
+              );
         if (res != 0)
         {
             goto exit;
@@ -187,8 +181,6 @@ int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void
     json_object_set_new(jresponse, "async-response-id", json_string(observe_context->response->id));
     ulfius_set_json_body_response(resp, 202, jresponse);
     json_decref(jresponse);
-
-    rest_unlock(rest);
 
     return U_CALLBACK_COMPLETE;
 
@@ -205,14 +197,25 @@ exit:
         }
     }
 
-    rest_unlock(rest);
-
     return err;
 }
 
-int rest_subscriptions_delete_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context)
+int rest_subscriptions_put_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context)
 {
     rest_context_t *rest = (rest_context_t *)context;
+    int ret;
+
+    rest_lock(rest);
+    ret = rest_subscriptions_put_cb_unsafe(rest, req, resp);
+    rest_unlock(rest);
+
+    return ret;
+}
+
+static int rest_subscriptions_delete_cb_unsafe(rest_context_t *rest,
+                                               const ulfius_req_t *req,
+                                               ulfius_resp_t *resp)
+{
     const char *name;
     lwm2m_client_t *client;
     char path[100];
@@ -233,9 +236,7 @@ int rest_subscriptions_delete_cb(const ulfius_req_t *req, ulfius_resp_t *resp, v
 
     /* Find requested client */
     name = u_map_get(req->map_url, "name");
-    rest_lock(rest);
     client = rest_endpoints_find_client(rest->lwm2m->clientList, name);
-    rest_unlock(rest);
     if (client == NULL)
     {
         ulfius_set_empty_body_response(resp, 404);
@@ -247,7 +248,7 @@ int rest_subscriptions_delete_cb(const ulfius_req_t *req, ulfius_resp_t *resp, v
 
     if (req->http_url == NULL || strlen(req->http_url) >= sizeof(path) || len >= sizeof(path))
     {
-        fprintf(stderr, "%s(): invalid http request (%s)!\n", __func__, req->http_url);
+        log_message(LOG_LEVEL_WARN, "%s(): invalid http request (%s)!\n", __func__, req->http_url);
         return U_CALLBACK_ERROR;
     }
 
@@ -259,9 +260,28 @@ int rest_subscriptions_delete_cb(const ulfius_req_t *req, ulfius_resp_t *resp, v
     }
 
     /* Extract and convert resource path */
-    strcpy(path, &req->http_url[len-1]);
+    strcpy(path, &req->http_url[len - 1]);
 
     if (lwm2m_stringToUri(path, strlen(path), &uri) == 0)
+    {
+        ulfius_set_empty_body_response(resp, 404);
+        return U_CALLBACK_COMPLETE;
+    }
+
+    /* Search existing registrations to confirm existing observation */
+    for (targetP = client->observationList; targetP != NULL; targetP = targetP->next)
+    {
+        if (targetP->uri.flag == uri.flag &&
+            targetP->uri.objectId == uri.objectId &&
+            targetP->uri.instanceId == uri.instanceId &&
+            targetP->uri.resourceId == uri.resourceId)
+        {
+            observe_context = targetP->userData;
+            break;
+        }
+    }
+
+    if (observe_context == NULL)
     {
         ulfius_set_empty_body_response(resp, 404);
         return U_CALLBACK_COMPLETE;
@@ -273,57 +293,38 @@ int rest_subscriptions_delete_cb(const ulfius_req_t *req, ulfius_resp_t *resp, v
      */
     const int err = U_CALLBACK_ERROR;
 
-    rest_lock(rest);
-
-    // Duplicate check just in case client was removed while rest was unlocked
-    client = rest_endpoints_find_client(rest->lwm2m->clientList, name);
-    if (client == NULL)
-    {
-        goto exit;
-    }
-
-    // Search existing registrations to confirm existing observation
-    for (targetP = client->observationList; targetP != NULL; targetP = targetP->next)
-    {
-        if (targetP->uri.objectId == uri.objectId
-         && targetP->uri.flag == uri.flag
-         && targetP->uri.instanceId == uri.instanceId
-         && targetP->uri.resourceId == uri.resourceId)
-        {
-            observe_context = targetP->userData;
-            break;
-        }
-    }
-
-    if (observe_context == NULL)
-    {
-        // XXX: This should return 404, but for easier rest lock management go to error
-        //ulfius_set_empty_body_response(resp, 404);
-        goto exit;
-    }
-
     // using dummy callback (rest_unobserve_cb), because NULL callback causes segmentation fault
     res = lwm2m_observe_cancel(
-            rest->lwm2m, client->internalID, &uri,
-            rest_unobserve_cb, observe_context
-    );
+              rest->lwm2m, client->internalID, &uri,
+              rest_unobserve_cb, observe_context
+          );
 
     if (res == COAP_404_NOT_FOUND)
     {
-        fprintf(stdout, "[WARNING] LwM2M and restserver subscriptions mismatch!");
-    } else if (res != 0) {
+        log_message(LOG_LEVEL_WARN, "[WARNING] LwM2M and restserver subscriptions mismatch!");
+    }
+    else if (res != 0)
+    {
         goto exit;
     }
 
     ulfius_set_empty_body_response(resp, 204);
 
-    rest_unlock(rest);
-
     return U_CALLBACK_COMPLETE;
 
 exit:
-    rest_unlock(rest);
 
     return err;
 }
 
+int rest_subscriptions_delete_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context)
+{
+    rest_context_t *rest = (rest_context_t *)context;
+    int ret;
+
+    rest_lock(rest);
+    ret = rest_subscriptions_delete_cb_unsafe(rest, req, resp);
+    rest_unlock(rest);
+
+    return ret;
+}

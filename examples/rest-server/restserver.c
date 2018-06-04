@@ -26,19 +26,23 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
+#include <liblwm2m.h>
+#include <ulfius.h>
 
 #include "connection.h"
 #include "restserver.h"
 #include "rest-ssdp.h"
+#include "logging.h"
+#include "settings.h"
+#include "version.h"
+
 
 static volatile int restserver_quit;
 static void sigint_handler(int signo)
 {
     restserver_quit = 1;
-    printf("Received signal No.: %d\n",signo);
 }
 
 /**
@@ -50,7 +54,7 @@ static void sigpipe_handler(int sig)
 {
     static volatile int sigpipe_cnt;
     sigpipe_cnt++;
-    fprintf(stderr, "SIGPIPE occurs: %d times.\n",sigpipe_cnt);
+    log_message(LOG_LEVEL_ERROR, "SIGPIPE occurs: %d times.\n", sigpipe_cnt);
 }
 
 
@@ -67,27 +71,30 @@ static void init_signals(void)
     sig.sa_handler = &sigint_handler;
     sigemptyset(&sig.sa_mask);
     sig.sa_flags = 0;//break system functions open, read ... if SIGINT occurs
-    if (0 != sigaction(SIGINT, &sig, &oldsig)) {
-        fprintf(stderr, "Failed to install SIGINT handler: %s\n", strerror(errno));
+    if (0 != sigaction(SIGINT, &sig, &oldsig))
+    {
+        log_message(LOG_LEVEL_FATAL, "Failed to install SIGINT handler: %s\n", strerror(errno));
     }
 
     //to stop valgrind
-    if (0 != sigaction(SIGTERM, &sig, &oldsig)) {
-        fprintf(stderr, "Failed to install SIGINT handler: %s\n", strerror(errno));
+    if (0 != sigaction(SIGTERM, &sig, &oldsig))
+    {
+        log_message(LOG_LEVEL_FATAL, "Failed to install SIGTERM handler: %s\n", strerror(errno));
     }
 
 
     memset(&sig, 0, sizeof(sig));
     sig.sa_handler = &sigpipe_handler;
     sigemptyset(&sig.sa_mask);
-    sig.sa_flags = SA_RESTART;//dont break system functions open, read ... if SIGPIPE occurs SA_INTERRUPT, but select return interrupted
-    if (0 != sigaction(SIGPIPE, &sig, &oldsig)) {
-        fprintf(stderr, "Failed to install SIGPIPE handler: %s\n", strerror(errno));
+    sig.sa_flags = SA_RESTART;
+    if (0 != sigaction(SIGPIPE, &sig, &oldsig))
+    {
+        log_message(LOG_LEVEL_FATAL, "Failed to install SIGPIPE handler: %s\n", strerror(errno));
     }
 }
 
 
-const char * binding_to_string(lwm2m_binding_t bind)
+const char *binding_to_string(lwm2m_binding_t bind)
 {
     switch (bind)
     {
@@ -108,7 +115,17 @@ const char * binding_to_string(lwm2m_binding_t bind)
     }
 }
 
-void client_monitor_cb(uint16_t clientID, lwm2m_uri_t * uriP, int status, lwm2m_media_type_t format, uint8_t * data, int dataLength, void * userData)
+
+int rest_version_cb(const ulfius_req_t *req, ulfius_resp_t *resp, void *context)
+{
+    ulfius_set_string_body_response(resp, 200, RESTSERVER_VERSION);
+
+    return U_CALLBACK_COMPLETE;
+}
+
+void client_monitor_cb(uint16_t clientID, lwm2m_uri_t *uriP, int status,
+                       lwm2m_media_type_t format, uint8_t *data, int dataLength,
+                       void *userData)
 {
     rest_context_t *rest = (rest_context_t *)userData;
     lwm2m_context_t *lwm2m = rest->lwm2m;
@@ -133,12 +150,12 @@ void client_monitor_cb(uint16_t clientID, lwm2m_uri_t * uriP, int status, lwm2m_
             }
             else
             {
-                fprintf(stderr, "[MONITOR] Failed to allocate registration notification!\n");
+                log_message(LOG_LEVEL_ERROR, "[MONITOR] Failed to allocate registration notification!\n");
             }
 
-            fprintf(stdout, "[MONITOR] Client %d registered.\n", clientID);
-        } 
-        else 
+            log_message(LOG_LEVEL_INFO, "[MONITOR] Client %d registered.\n", clientID);
+        }
+        else
         {
             rest_notif_update_t *updateNotif = rest_notif_update_new();
 
@@ -149,31 +166,31 @@ void client_monitor_cb(uint16_t clientID, lwm2m_uri_t * uriP, int status, lwm2m_
             }
             else
             {
-                fprintf(stderr, "[MONITOR] Failed to allocate update notification!\n");
+                log_message(LOG_LEVEL_ERROR, "[MONITOR] Failed to allocate update notification!\n");
             }
 
-            fprintf(stdout, "[MONITOR] Client %d updated.\n", clientID);
+            log_message(LOG_LEVEL_INFO, "[MONITOR] Client %d updated.\n", clientID);
         }
-        
-        fprintf(stdout, "\tname: '%s'\n", client->name);
-        fprintf(stdout, "\tbind: '%s'\n", binding_to_string(client->binding));
-        fprintf(stdout, "\tlifetime: %d\n", client->lifetime);
-        fprintf(stdout, "\tobjects: ");
+
+        log_message(LOG_LEVEL_DEBUG, "\tname: '%s'\n", client->name);
+        log_message(LOG_LEVEL_DEBUG, "\tbind: '%s'\n", binding_to_string(client->binding));
+        log_message(LOG_LEVEL_DEBUG, "\tlifetime: %d\n", client->lifetime);
+        log_message(LOG_LEVEL_DEBUG, "\tobjects: ");
         for (obj = client->objectList; obj != NULL; obj = obj->next)
         {
             if (obj->instanceList == NULL)
             {
-                fprintf(stdout, "/%d, ", obj->id);
+                log_message(LOG_LEVEL_DEBUG, "/%d, ", obj->id);
             }
             else
             {
                 for (ins = obj->instanceList; ins != NULL; ins = ins->next)
                 {
-                    fprintf(stdout, "/%d/%d, ", obj->id, ins->id);
+                    log_message(LOG_LEVEL_DEBUG, "/%d/%d, ", obj->id, ins->id);
                 }
             }
         }
-        fprintf(stdout, "\n");
+        log_message(LOG_LEVEL_DEBUG, "\n");
         break;
 
     case COAP_202_DELETED:
@@ -187,14 +204,14 @@ void client_monitor_cb(uint16_t clientID, lwm2m_uri_t * uriP, int status, lwm2m_
         }
         else
         {
-            fprintf(stderr, "[MONITOR] Failed to allocate deregistration notification!\n");
+            log_message(LOG_LEVEL_ERROR, "[MONITOR] Failed to allocate deregistration notification!\n");
         }
 
-        fprintf(stdout, "[MONITOR] Client %d deregistered.\n", clientID);
+        log_message(LOG_LEVEL_INFO, "[MONITOR] Client %d deregistered.\n", clientID);
         break;
     }
     default:
-        fprintf(stdout, "[MONITOR] Client %d status update %d.\n", clientID, status);
+        log_message(LOG_LEVEL_INFO, "[MONITOR] Client %d status update %d.\n", clientID, status);
         break;
     }
 }
@@ -214,7 +231,7 @@ int socket_receive(lwm2m_context_t *lwm2m, int sock)
 
     if (nbytes < 0)
     {
-        fprintf(stderr, "recvfrom() error: %d\n", nbytes);
+        log_message(LOG_LEVEL_FATAL, "recvfrom() error: %d\n", nbytes);
         return -1;
     }
 
@@ -243,25 +260,39 @@ int main(int argc, char *argv[])
     struct timeval tv;
     int res;
     rest_context_t rest;
+    char coap_port[6];
 
-
-    init_signals();
-
-
-    rest_init(&rest);
-
-
-    if (start_ssdp(UDP_LISTENER_PORT_NB) != SSDP_OK)
+    static settings_t settings =
     {
-        fprintf(stderr, "Failed to start ssdp server!\n");
+        {
+            8888, /* settings.http.port */
+        },
+        {
+            5555, /* settings.coap.port */
+        },
+        {
+            LOG_LEVEL_WARN, /* settings.logging.level */
+        },
+    };
+
+    if (settings_init(argc, argv, &settings) != 0)
+    {
         return -1;
     }
 
+    logging_init(settings.logging.level);
+
+    init_signals();
+
+    rest_init(&rest);
+
     /* Socket section */
-    sock = create_socket(UDP_LISTENER_PORT_NB, AF_INET6);
+    snprintf(coap_port, sizeof(coap_port), "%d", settings.coap.port);
+    log_message(LOG_LEVEL_INFO, "Creating coap socket on port %s\n", coap_port);
+    sock = create_socket(coap_port, AF_INET6);
     if (sock < 0)
     {
-        fprintf(stderr, "Failed to create socket!\n");
+        log_message(LOG_LEVEL_FATAL, "Failed to create socket!\n");
         return -1;
     }
 
@@ -269,18 +300,19 @@ int main(int argc, char *argv[])
     rest.lwm2m = lwm2m_init(NULL);
     if (rest.lwm2m == NULL)
     {
-        fprintf(stderr, "Failed to create LwM2M server!\n");
+        log_message(LOG_LEVEL_FATAL, "Failed to create LwM2M server!\n");
         return -1;
     }
-    
+
     lwm2m_set_monitoring_callback(rest.lwm2m, client_monitor_cb, &rest);
 
     /* REST server section */
     struct _u_instance instance;
 
-    if (ulfius_init_instance(&instance, 8888, NULL, NULL) != U_OK)
+    log_message(LOG_LEVEL_INFO, "Creating http socket on port %u\n", settings.http.port);
+    if (ulfius_init_instance(&instance, settings.http.port, NULL, NULL) != U_OK)
     {
-        fprintf(stderr, "Failed to initialize REST server!\n");
+        log_message(LOG_LEVEL_FATAL, "Failed to initialize REST server!\n");
         return -1;
     }
 
@@ -290,24 +322,44 @@ int main(int argc, char *argv[])
      */
 
     // Endpoints
-    ulfius_add_endpoint_by_val(&instance, "GET", "/endpoints", NULL, 10, &rest_endpoints_cb, &rest);
-    ulfius_add_endpoint_by_val(&instance, "GET", "/endpoints", ":name", 10, &rest_endpoints_name_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "GET", "/endpoints", NULL, 10,
+                               &rest_endpoints_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "GET", "/endpoints", ":name", 10,
+                               &rest_endpoints_name_cb, &rest);
 
     // Resources
-    ulfius_add_endpoint_by_val(&instance, "*", "/endpoints", ":name/*", 10, &rest_resources_rwe_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "*", "/endpoints", ":name/*", 10,
+                               &rest_resources_rwe_cb, &rest);
 
     // Notifications
-    ulfius_add_endpoint_by_val(&instance, "GET", "/notification/callback", NULL, 10, &rest_notifications_get_callback_cb, &rest);
-    ulfius_add_endpoint_by_val(&instance, "PUT", "/notification/callback", NULL, 10, &rest_notifications_put_callback_cb, &rest);
-    ulfius_add_endpoint_by_val(&instance, "GET", "/notification/pull", NULL, 10, &rest_notifications_pull_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "GET", "/notification/callback", NULL, 10,
+                               &rest_notifications_get_callback_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "PUT", "/notification/callback", NULL, 10,
+                               &rest_notifications_put_callback_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "DELETE", "/notification/callback", NULL, 10,
+                               &rest_notifications_delete_callback_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "GET", "/notification/pull", NULL, 10,
+                               &rest_notifications_pull_cb, &rest);
 
     // Subscriptions
-    ulfius_add_endpoint_by_val(&instance, "PUT", "/subscriptions", ":name/*", 10, &rest_subscriptions_put_cb, &rest);
-    ulfius_add_endpoint_by_val(&instance, "DELETE", "/subscriptions", ":name/*", 10, &rest_subscriptions_delete_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "PUT", "/subscriptions", ":name/*", 10,
+                               &rest_subscriptions_put_cb, &rest);
+    ulfius_add_endpoint_by_val(&instance, "DELETE", "/subscriptions", ":name/*", 10,
+                               &rest_subscriptions_delete_cb, &rest);
+
+    // Version
+    ulfius_add_endpoint_by_val(&instance, "GET", "/version", NULL, 10, &rest_version_cb, NULL);
 
     if (ulfius_start_framework(&instance) != U_OK)
     {
-        fprintf(stderr, "Failed to start REST server!\n");
+        log_message(LOG_LEVEL_FATAL, "Failed to start REST server!\n");
+        return -1;
+    }
+
+    /* SSDP service section */
+    if (start_ssdp(coap_port) != SSDP_OK)
+    {
+        log_message(LOG_LEVEL_FATAL, "Failed to start SSDP server!\n");
         return -1;
     }
 
@@ -324,24 +376,25 @@ int main(int argc, char *argv[])
         res = lwm2m_step(rest.lwm2m, &tv.tv_sec);
         if (res)
         {
-            fprintf(stderr, "lwm2m_step() error: %d\n", res);
+            log_message(LOG_LEVEL_ERROR, "lwm2m_step() error: %d\n", res);
         }
 
         res = rest_step(&rest, &tv);
         if (res)
         {
-            fprintf(stderr, "rest_step() error: %d\n", res);
+            log_message(LOG_LEVEL_ERROR, "rest_step() error: %d\n", res);
         }
         rest_unlock(&rest);
 
         res = select(FD_SETSIZE, &readfds, NULL, NULL, &tv);
         if (res < 0)
         {
-            if (errno == EINTR) {
+            if (errno == EINTR)
+            {
                 continue;
             }
 
-            fprintf(stderr, "select() error: %d\n", res);
+            log_message(LOG_LEVEL_ERROR, "select() error: %d\n", res);
         }
 
         if (FD_ISSET(sock, &readfds))

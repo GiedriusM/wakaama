@@ -22,10 +22,10 @@
  * SOFTWARE.
  */
 
-#include "restserver.h"
-
 #include <string.h>
 
+#include "logging.h"
+#include "restserver.h"
 
 bool valid_callback_url(const char *url)
 {
@@ -35,9 +35,19 @@ bool valid_callback_url(const char *url)
 
 bool validate_callback(json_t *jcallback)
 {
-    json_t *url, *headers;
-    const char *key;
+    json_t *url, *jheaders;
+    const char *header;
     json_t *value;
+    int res;
+    const char *callback_url;
+    ulfius_req_t test_request;
+    ulfius_resp_t test_response;
+    struct _u_map headers;
+    bool validation_state = true;
+    json_t *jbody = json_pack("{s:[], s:[], s:[], s:[]}",
+                              "registrations", "reg-updates",
+                              "async-responses", "de-registrations");
+
 
     if (jcallback == NULL)
     {
@@ -58,27 +68,55 @@ bool validate_callback(json_t *jcallback)
     }
 
     // "header" must be an object...
-    headers = json_object_get(jcallback, "headers");
-    if (!json_is_object(headers))
+    jheaders = json_object_get(jcallback, "headers");
+    if (!json_is_object(jheaders))
     {
         return false;
     }
 
+    u_map_init(&headers);
     // ... which contains string key-value pairs
-    json_object_foreach(headers, key, value)
+    json_object_foreach(jheaders, header, value)
     {
-        // TODO: validate key and value strings
         if (!json_is_string(value))
         {
+            u_map_clean(&headers);
+
             return false;
         }
+
+        u_map_put(&headers, header, json_string_value(value));
     }
 
-    return true;
+    callback_url = json_string_value(url);
+
+    ulfius_init_request(&test_request);
+    test_request.http_verb = strdup("PUT");
+    test_request.http_url = strdup(callback_url);
+    test_request.timeout = 20;
+    u_map_copy_into(test_request.map_header, &headers);
+    ulfius_set_json_body_request(&test_request, jbody);
+    json_decref(jbody);
+
+    ulfius_init_response(&test_response);
+    res = ulfius_send_http_request(&test_request, &test_response);
+
+    if (res != U_OK)
+    {
+        log_message(LOG_LEVEL_WARN, "Callback \"%s\" is not reachable.\n", callback_url);
+
+        validation_state = false;
+    }
+
+    u_map_clean(&headers);
+    ulfius_clean_response(&test_response);
+    ulfius_clean_request(&test_request);
+
+    return validation_state;
 }
 
 int rest_notifications_get_callback_cb(const ulfius_req_t *req, ulfius_resp_t *resp,
-        void *context)
+                                       void *context)
 {
     rest_context_t *rest = (rest_context_t *)context;
 
@@ -99,10 +137,11 @@ int rest_notifications_get_callback_cb(const ulfius_req_t *req, ulfius_resp_t *r
 }
 
 int rest_notifications_put_callback_cb(const ulfius_req_t *req, ulfius_resp_t *resp,
-        void *context)
+                                       void *context)
 {
     rest_context_t *rest = (rest_context_t *)context;
     const char *ct;
+    const char *callback_url;
     json_t *jcallback;
 
     ct = u_map_get_case(req->map_header, "Content-Type");
@@ -115,11 +154,17 @@ int rest_notifications_put_callback_cb(const ulfius_req_t *req, ulfius_resp_t *r
     jcallback = json_loadb(req->binary_body, req->binary_body_length, 0, NULL);
     if (!validate_callback(jcallback))
     {
+        if (jcallback != NULL)
+        {
+            json_decref(jcallback);
+        }
+
         ulfius_set_empty_body_response(resp, 400);
         return U_CALLBACK_COMPLETE;
     }
 
-    fprintf(stdout, "[SET-CALLBACK] url=%s\n", json_string_value(json_object_get(jcallback, "url")));
+    callback_url = json_string_value(json_object_get(jcallback, "url"));
+    log_message(LOG_LEVEL_INFO, "[SET-CALLBACK] url=%s\n", callback_url);
 
     rest_lock(rest);
 
@@ -130,6 +175,37 @@ int rest_notifications_put_callback_cb(const ulfius_req_t *req, ulfius_resp_t *r
     }
 
     rest->callback = jcallback;
+
+    ulfius_set_empty_body_response(resp, 204);
+
+    rest_unlock(rest);
+
+    return U_CALLBACK_COMPLETE;
+}
+
+int rest_notifications_delete_callback_cb(const ulfius_req_t *req, ulfius_resp_t *resp,
+                                          void *context)
+{
+    rest_context_t *rest = (rest_context_t *)context;
+
+    rest_lock(rest);
+
+    if (rest->callback != NULL)
+    {
+        log_message(LOG_LEVEL_INFO, "[DELETE-CALLBACK] url=%s\n",
+                    json_string_value(json_object_get(rest->callback, "url")));
+
+        json_decref(rest->callback);
+        rest->callback = NULL;
+
+        ulfius_set_empty_body_response(resp, 204);
+    }
+    else
+    {
+        log_message(LOG_LEVEL_WARN, "[DELETE-CALLBACK] No callbacks to delete\n");
+
+        ulfius_set_empty_body_response(resp, 404);
+    }
 
     rest_unlock(rest);
 
@@ -179,7 +255,7 @@ void rest_notify_async_response(rest_context_t *rest, rest_notif_async_response_
     rest_list_add(rest->asyncResponseList, resp);
 }
 
-static json_t * rest_async_response_to_json(rest_async_response_t *async)
+static json_t *rest_async_response_to_json(rest_async_response_t *async)
 {
     json_t *jasync = json_object();
 
@@ -191,7 +267,7 @@ static json_t * rest_async_response_to_json(rest_async_response_t *async)
     return jasync;
 }
 
-static json_t * rest_registration_notification_to_json(rest_notif_registration_t *registration)
+static json_t *rest_registration_notification_to_json(rest_notif_registration_t *registration)
 {
     json_t *jreg = json_object();
 
@@ -200,7 +276,7 @@ static json_t * rest_registration_notification_to_json(rest_notif_registration_t
     return jreg;
 }
 
-static json_t * rest_update_notification_to_json(rest_notif_update_t *update)
+static json_t *rest_update_notification_to_json(rest_notif_update_t *update)
 {
     json_t *jupdate = json_object();
 
@@ -209,7 +285,7 @@ static json_t * rest_update_notification_to_json(rest_notif_update_t *update)
     return jupdate;
 }
 
-static json_t * rest_deregistration_notification_to_json(rest_notif_deregistration_t *deregistration)
+static json_t *rest_deregistration_notification_to_json(rest_notif_deregistration_t *deregistration)
 {
     json_t *jdereg = json_object();
 
@@ -218,7 +294,7 @@ static json_t * rest_deregistration_notification_to_json(rest_notif_deregistrati
     return jdereg;
 }
 
-json_t * rest_notifications_json(rest_context_t *rest)
+json_t *rest_notifications_json(rest_context_t *rest)
 {
     json_t *jnotifs;
     json_t *jarray;

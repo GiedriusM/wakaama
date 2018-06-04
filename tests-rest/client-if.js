@@ -18,11 +18,14 @@ class ClientInterface extends Client {
   connect(addr, callback) {
     // TODO: set address
 
-    this.on('state-change', state => {
+    function callbackOnRegistration(state) {
       if (state === 'registered') {
         callback(null, {});
+        this.removeListener('state-change', callbackOnRegistration);
       }
-    });
+    }
+
+    this.on('state-change', callbackOnRegistration);
 
     this.start();
   }
@@ -37,6 +40,16 @@ class ClientInterface extends Client {
     });
 
     this.stop();
+  }
+
+  sendUpdate() {
+    return new Promise((fulfill, reject) => {
+      if (this.state !== 'registered') {
+        reject('Sensor not registered!');
+      }
+      this.updateHandler();
+      fulfill();
+    });
   }
 
   set temperature(t) {

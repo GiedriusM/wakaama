@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2017 8devices
+ * Copyright (c) 2018 8devices
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,24 +22,22 @@
  * SOFTWARE.
  */
 
-#include "rest-utils.h"
+#ifndef LOGGING_H
+#define LOGGING_H
 
-#include "restserver.h"
-
-
-int coap_to_http_status(int status)
+typedef enum
 {
-    switch (status)
-    {
-    case COAP_204_CHANGED:
-    case COAP_205_CONTENT:
-        return HTTP_200_OK;
+    LOG_LEVEL_FATAL = 0,
+    LOG_LEVEL_ERROR = 1,
+    LOG_LEVEL_WARN = 2,
+    LOG_LEVEL_INFO = 3,
+    LOG_LEVEL_DEBUG = 4,
+    LOG_LEVEL_TRACE = 5,
+} logging_level_t;
 
-    case COAP_404_NOT_FOUND:
-        return HTTP_404_NOT_FOUND;
+int logging_init(logging_level_t logging_level);
 
-    default:
-        return -(((status >> 5) & 0x7) * 100 + (status & 0x1F));
-    }
-}
+int log_message(logging_level_t logging_level, char *format, ...);
+
+#endif // LOGGING_H
 

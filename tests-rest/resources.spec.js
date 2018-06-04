@@ -142,6 +142,16 @@ describe('Resources interface', function () {
         });
     });
 
+    it('should return 400 for empty request body', function (done) {
+      chai.request(server)
+        .put('/endpoints/'+client.name+'/some/invalid/path')
+        .set('Content-Type', 'application/vnd.oma.lwm2m+tlv')
+        .end(function (err, res) {
+          res.should.have.status(400);
+          done();
+        });
+    });
+
     it('should return 404 for invalid resource-path', function (done) {
       chai.request(server)
         .put('/endpoints/'+client.name+'/some/invalid/path')
@@ -206,6 +216,19 @@ describe('Resources interface', function () {
           });
         });
     });
+
+    it('should return 415 for non-existing Content-Type', function (done) {
+      chai.request(server)
+        .put('/endpoints/non-existing-ep/1/0/3')
+        .set('Content-Type', 'application/unexisting-content-type')
+        .send(Buffer.from([0xC1, 0x03, 0x2A]))
+        .end(function (err, res) {
+          should.exist(err);
+          err.should.have.status(415);
+          done();
+        });
+    });
+
   });
 
   describe('POST /endpoints/{endpoint-name}/{resource}', function () {
@@ -213,7 +236,7 @@ describe('Resources interface', function () {
       const id_regex = /^\d+#[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}$/g;
       chai.request(server)
         .post('/endpoints/'+client.name+'/1/0/8')
-        .set('Content-Type', 'application/vnd.oma.lwm2m+tlv')
+        .set('Content-Type', 'text/plain')
         .end(function (err, res) {
           should.not.exist(err);
           res.should.have.status(202);
@@ -231,7 +254,7 @@ describe('Resources interface', function () {
     it('should return 404 for invalid resource-path', function (done) {
       chai.request(server)
         .post('/endpoints/'+client.name+'/some/invalid/path')
-        .set('Content-Type', 'application/vnd.oma.lwm2m+tlv')
+        .set('Content-Type', 'text/plain')
         .end(function (err, res) {
           res.should.have.status(404);
           done();
@@ -241,19 +264,39 @@ describe('Resources interface', function () {
     it('should return 410 for non-existing endpoint', function (done) {
       chai.request(server)
         .post('/endpoints/non-existing-ep/1/0/8')
-        .set('Content-Type', 'application/vnd.oma.lwm2m+tlv')
+        .set('Content-Type', 'text/plain')
         .end(function (err, res) {
           res.should.have.status(410);
           done();
         });
     });
 
-    it('response should return 200 and valid payload', function (done) {
+    it('response should return 200 and valid payload (with Content-Type header)', function (done) {
       var self = this;
 
       chai.request(server)
         .post('/endpoints/'+client.name+'/1/0/8')
-        .set('Content-Type', 'application/vnd.oma.lwm2m+tlv')
+        .set('Content-Type', 'text/plain')
+        .end(function (err, res) {
+          should.not.exist(err);
+          res.should.have.status(202);
+
+          const id = res.body['async-response-id'];
+          self.events.on('async-response', resp => {
+            if (resp.id == id) {
+              resp.status.should.be.eql(200);
+              resp.payload.should.be.eql('');
+              done();
+            }
+          });
+        });
+    });
+
+    it('response should return 200 and valid payload (without Content-Type header)', function (done) {
+      var self = this;
+
+      chai.request(server)
+        .post('/endpoints/'+client.name+'/1/0/8')
         .end(function (err, res) {
           should.not.exist(err);
           res.should.have.status(202);
@@ -274,7 +317,7 @@ describe('Resources interface', function () {
 
       chai.request(server)
         .post('/endpoints/'+client.name+'/123/456/789')
-        .set('Content-Type', 'application/vnd.oma.lwm2m+tlv')
+        .set('Content-Type', 'text/plain')
         .end(function (err, res) {
           should.not.exist(err);
           res.should.have.status(202);
@@ -286,6 +329,31 @@ describe('Resources interface', function () {
               done();
             }
           });
+        });
+    });
+
+    it('should return 415 for non-existing Content-Type', function (done) {
+      chai.request(server)
+        .post('/endpoints/non-existing-ep/1/0/8')
+        .set('Content-Type', 'application/unexisting-content-type')
+        .end(function (err, res) {
+          should.exist(err);
+          err.should.have.status(415);
+          done();
+        });
+    });
+  });
+
+  describe('DELETE /endpoints/{endpoint-name}/{resource-path}', function () {
+
+    it('should return 405 code', function(done) {
+      chai.request(server)
+        .delete('/endpoints/'+client.name+'/3/0/0')
+        .end(function (err, res) {
+          should.exist(err);
+          err.should.have.status(405);
+
+          done();
         });
     });
   });
