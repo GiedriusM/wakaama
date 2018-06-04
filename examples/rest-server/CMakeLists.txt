@@ -28,7 +28,6 @@ set(RESTSERVER_FULL_VERSION "restserver ${RESTSERVER_VERSION}")
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/version.h)
 
 SET(SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/rest-ssdp.c
     ${CMAKE_CURRENT_LIST_DIR}/restserver.c
     ${CMAKE_CURRENT_LIST_DIR}/rest-core.c
     ${CMAKE_CURRENT_LIST_DIR}/rest-core-types.c
@@ -36,6 +35,7 @@ SET(SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/rest-resources.c
     ${CMAKE_CURRENT_LIST_DIR}/rest-notifications.c
     ${CMAKE_CURRENT_LIST_DIR}/rest-subscriptions.c
+    ${CMAKE_CURRENT_LIST_DIR}/rest-ssdp.c
     ${CMAKE_CURRENT_LIST_DIR}/rest-list.c
     ${CMAKE_CURRENT_LIST_DIR}/rest-utils.c
     ${CMAKE_CURRENT_LIST_DIR}/logging.c

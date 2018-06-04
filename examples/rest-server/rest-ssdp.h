@@ -32,7 +32,7 @@ typedef enum
 } ssdp_status_t;
 
 //start_ssdp and stop_ssdp must be used from main context only
-ssdp_status_t start_ssdp(const char* udp_port_nb_str);
-void stop_ssdp(void);
+ssdp_status_t ssdp_start(const char *coap_port);
+void ssdp_stop(void);
 
 #endif /* EXAMPLES_REST_SERVER_REST_SSDP_H_ */

@@ -357,7 +357,7 @@ int main(int argc, char *argv[])
     }
 
     /* SSDP service section */
-    if (start_ssdp(coap_port) != SSDP_OK)
+    if (ssdp_start(coap_port) != SSDP_OK)
     {
         log_message(LOG_LEVEL_FATAL, "Failed to start SSDP server!\n");
         return -1;
@@ -405,7 +405,8 @@ int main(int argc, char *argv[])
         }
 
     }
-    stop_ssdp();
+
+    ssdp_stop();
 
     ulfius_stop_framework(&instance);
     ulfius_clean_instance(&instance);

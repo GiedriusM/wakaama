@@ -44,13 +44,17 @@
 #define SSDP_RESPONSE   "HTTP/1.1 200 OK\r\n"                               \
                         "CACHE-CONTROL: max-age=1800\r\n"                   \
                         "EXT:\r\n"                                          \
-                        "LOCATION: *\r\n"                                   \
+                        "LOCATION: *\r\n"   \
                         "SERVER: OS/0.1 UPnP/1.0 X/0.1\r\n"                 \
                         "ST: urn:8devices-com:service:lwm2m:1\r\n"          \
-                        "USN: uuid:754cb08a-7ea1-485f-8202-9f16234083f2"    \
-                        "::urn:8devices-com:service:lwm2m:1\r\n"            \
+                        "USN: %s::urn:8devices-com:service:lwm2m:1\r\n"     \
                         "\r\n"
+typedef struct {
 
+} ssdp_t;
+
+static void ssdp_init(ssdp_t *ssdp);
+static void ssdp_close(ssdp_t *ssdp);
 static void *ssdp_run(void *arg);
 
 static pthread_t ssdp_thread = 0; //must be used from main only (start...stop)
@@ -65,7 +69,7 @@ ssdp_status_t ssdp_start(const char *coap_port)
         ssdp_stop();
     }
 
-    status = pthread_create(&ssdp_thread, NULL, &ssdp_run, (void *)coap_port);
+    status = pthread_create(&ssdp_thread, NULL, &ssdp_run, &ssdp);
     if (status != 0)
     {
         fprintf(stderr, "can't create thread :[%s]\n", strerror(status));
@@ -75,7 +79,7 @@ ssdp_status_t ssdp_start(const char *coap_port)
     pthread_setname_np(ssdp_thread, "ssdp_server");
 
     printf("Thread created successfully\n");
-
+    
     return SSDP_OK;
 }
 
@@ -99,6 +103,29 @@ void ssdp_stop(void)
     }
 }
 
+int ssdp_init()
+{
+
+}
+
+void ssdp_close(ssdp_t ssdp)
+{
+    if (ssdp->sock != -1)
+    {
+        close(ssdp->sock);
+    }
+
+    if (ssdp->localAddr)
+    {
+        freeaddrinfo(ssdp->localAddr);
+    }
+
+    if (ssdp->multicastAddr)
+    {
+        freeaddrinfo(ssdp->multicastAddr);
+    }
+}
+
 static int parse_buf_lines(char *buf)
 {
     char *line;
@@ -107,7 +134,7 @@ static int parse_buf_lines(char *buf)
 
     line = strtok_r(buf, "\r\n", &saveptr);
 
-    while (line != NULL)
+    while (line != NULL) 
     {
         if (i == 0 && strcmp(line, "M-SEARCH * HTTP/1.1") != 0)
         {
@@ -132,12 +159,13 @@ static void ssdp_quit_sig_handler(int signo)
 
 static void *ssdp_run(void *arg)
 {
+    ssdp_t ssdp = (ssdp_t *)arg;
     int status;
     struct sigaction sa;
     struct addrinfo hints = { 0 }; /* Hints for name lookup */
     struct addrinfo* multicastAddr = 0; /* Multicast Address */
     struct addrinfo* localAddr = 0; /* Local address to bind to */
-    int sock = -1;
+    int sock;
 
     ssdp_quit = 0;
 
@@ -147,7 +175,7 @@ static void *ssdp_run(void *arg)
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
 
-    status = sigaction(SSDP_QUIT_SIGNAL, &sa, NULL);
+    status = sigaction(SSDP_QUIT_SIGNAL, &sa, NULL); 
     if (status != 0)
     {
         perror("sigaction");
@@ -159,7 +187,7 @@ static void *ssdp_run(void *arg)
     hints.ai_family = PF_UNSPEC;
     hints.ai_flags = AI_NUMERICHOST;
     status = getaddrinfo(SSDP_GROUP, NULL, &hints, &multicastAddr);
-    if (status != 0)
+    if (status != 0) 
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
         goto exit;
@@ -193,14 +221,14 @@ static void *ssdp_run(void *arg)
      * application to receive copies of the multicast datagrams.
      */
     status = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
-    if (status != 0)
+    if (status != 0) 
     {
         perror("setsockopt");
         goto exit;
     }
 
     /* Bind the local address to the multicast port */
-    status = bind(sock, localAddr->ai_addr, localAddr->ai_addrlen);
+    status = bind(sock, localAddr->ai_addr, localAddr->ai_addrlen); 
     if (status != 0)
     {
         perror("bind() failed");
@@ -240,15 +268,15 @@ static void *ssdp_run(void *arg)
         multicastRequest.ipv6mr_interface = 0;
 
         /* Join the multicast address */
-        status = setsockopt(sock, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP,
+        status = setsockopt(sock, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, 
                             &multicastRequest, sizeof(multicastRequest));
-        if (status != 0)
+        if (status != 0) 
         {
             perror("setsockopt() failed");
             goto exit;
         }
     }
-    else
+    else 
     {
         perror("Neither IPv4 or IPv6");
         goto exit;
@@ -289,9 +317,9 @@ static void *ssdp_run(void *arg)
 
         puts(buf);
 
-        if (parse_buf_lines(buf) != 0)
+        if (parse_buf_lines(buf) != 0) 
         {
-            len = snprintf(buf, sizeof(buf), SSDP_RESPONSE);
+            len = snprintf(buf, sizeof(buf), SSDP_RESPONSE, clienthost, coap_port);
             puts(buf);
 
             len = sendto(sock, buf, len, 0, (struct sockaddr *)&clientaddr, sizeof(clientaddr));
@@ -303,20 +331,7 @@ static void *ssdp_run(void *arg)
     } //while
 
 exit:
-    if (sock != -1)
-    {
-        close(sock);
-    }
-
-    if (localAddr)
-    {
-        freeaddrinfo(localAddr);
-    }
-
-    if (multicastAddr)
-    {
-        freeaddrinfo(multicastAddr);
-    }
+    ssdp_close(ssdp);
 
     return (void *)status;
 }
