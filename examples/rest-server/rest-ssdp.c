@@ -157,30 +157,14 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
 {
     int status;
     struct addrinfo hints;
-    struct addrinfo *multicast_addr = NULL;
-    struct addrinfo *local_addr = NULL;
+    struct addrinfo *addr = NULL;
 
     /* Resolve the multicast group address */
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = PF_UNSPEC;
     hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_flags = AI_NUMERICHOST;
-    status = getaddrinfo(SSDP_GROUP, NULL, &hints, &multicast_addr);
-    if (status != 0)
-    {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-        goto exit;
-    }
-
-    /*
-     Get a local address with the same family (IPv4 or IPv6) as our multicast group
-     This is for receiving on a certain port.
-     */
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = multicast_addr->ai_family;
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_flags = AI_PASSIVE;
-    status = getaddrinfo(NULL, SSDP_PORT, &hints, &local_addr);
+    hints.ai_flags = AI_NUMERICHOST | AI_PASSIVE;
+    status = getaddrinfo(SSDP_GROUP, SSDP_PORT, &hints, &addr);
     if (status != 0)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
@@ -188,7 +172,7 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
     }
 
     /* Create socket for receiving datagrams */
-    ssdp->s_sock = socket(local_addr->ai_family, local_addr->ai_socktype, 0);
+    ssdp->s_sock = socket(addr->ai_family, addr->ai_socktype, 0);
     if (ssdp->s_sock < 0)
     {
         perror("socket() failed");
@@ -208,7 +192,7 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
     }
 
     /* Bind the local address to the multicast port */
-    status = bind(ssdp->s_sock, local_addr->ai_addr, local_addr->ai_addrlen);
+    status = bind(ssdp->s_sock, addr->ai_addr, addr->ai_addrlen);
     if (status != 0)
     {
         perror("bind() failed");
@@ -218,14 +202,14 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
     /* Join the multicast group. We do this seperately depending on whether we
      * are using IPv4 or IPv6.
      */
-    if (multicast_addr->ai_family == PF_INET &&
-        multicast_addr->ai_addrlen == sizeof(struct sockaddr_in))
+    if (addr->ai_family == PF_INET &&
+        addr->ai_addrlen == sizeof(struct sockaddr_in))
     {
         struct ip_mreq request; // Multicast address join structure
 
         /* Specify the multicast group */
         memcpy(&request.imr_multiaddr,
-               &((struct sockaddr_in *)(multicast_addr->ai_addr))->sin_addr,
+               &((struct sockaddr_in *)(addr->ai_addr))->sin_addr,
                sizeof(request.imr_multiaddr));
 
         /* Accept multicast from any interface */
@@ -240,14 +224,14 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
             goto exit;
         }
     }
-    else if (multicast_addr->ai_family == PF_INET6 &&
-             multicast_addr->ai_addrlen == sizeof(struct sockaddr_in6))
+    else if (addr->ai_family == PF_INET6 &&
+             addr->ai_addrlen == sizeof(struct sockaddr_in6))
     {
         struct ipv6_mreq request; // Multicast address join structure
 
         /* Specify the multicast group */
         memcpy(&request.ipv6mr_multiaddr,
-               &((struct sockaddr_in6*)(multicast_addr->ai_addr))->sin6_addr,
+               &((struct sockaddr_in6*)(addr->ai_addr))->sin6_addr,
                sizeof(request.ipv6mr_multiaddr));
 
         /* Accept multicast from any interface */
@@ -277,14 +261,9 @@ exit:
         ssdp_sock_close(ssdp);
     }
 
-    if (local_addr)
+    if (addr)
     {
-        freeaddrinfo(local_addr);
-    }
-
-    if (multicast_addr)
-    {
-        freeaddrinfo(multicast_addr);
+        freeaddrinfo(addr);
     }
 
     return (status == 0) ? SSDP_OK : SSDP_ERROR;
@@ -376,6 +355,7 @@ int ssdp_request_is_valid(char *buf)
         }
 
         line = strtok_r(NULL, "\r\n", &saveptr);
+        i++;
     }
 
     return 0;
