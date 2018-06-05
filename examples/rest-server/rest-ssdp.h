@@ -31,8 +31,17 @@ typedef enum
     SSDP_ERROR,
 } ssdp_status_t;
 
-//start_ssdp and stop_ssdp must be used from main context only
-ssdp_status_t ssdp_start(const char *coap_port);
-void ssdp_stop(void);
+typedef struct
+{
+    const char *coap_port;
+} ssdp_param_t;
+
+typedef struct ssdp_t ssdp_t;
+
+ssdp_t *ssdp_init(ssdp_param_t *params);
+void    ssdp_free(ssdp_t *ssdp);
+
+ssdp_status_t ssdp_start(ssdp_t *ssdp);
+ssdp_status_t ssdp_stop(ssdp_t *ssdp);
 
 #endif /* EXAMPLES_REST_SERVER_REST_SSDP_H_ */
