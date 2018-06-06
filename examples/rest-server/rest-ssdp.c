@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2017 8devices
+ * Copyright (c) 2018 8devices
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -24,18 +24,16 @@
 
 #include "rest-ssdp.h"
 
-#include <arpa/inet.h>
+#include <errno.h>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <pthread.h>
-#include <signal.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
+#include <string.h>
 #include <sys/socket.h>
-#include <time.h>
 #include <unistd.h>
+
+#include "logging.h"
 
 
 #define SSDP_PORT "1900"
@@ -64,10 +62,13 @@ static int ssdp_request_is_valid(char *buf);
 
 ssdp_t *ssdp_init(ssdp_param_t *params)
 {
+    log_message(LOG_LEVEL_DEBUG, "[SSDP] %s(): params=%p\n", __func__, params);
+
     ssdp_t *ssdp = calloc(1, sizeof(ssdp_t));
 
     if (ssdp == NULL)
     {
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to allocate memory!\n");
         return NULL;
     }
 
@@ -82,6 +83,8 @@ ssdp_t *ssdp_init(ssdp_param_t *params)
 
 void ssdp_free(ssdp_t *ssdp)
 {
+    log_message(LOG_LEVEL_DEBUG, "[SSDP] %s(): ssdp=%p\n", __func__, ssdp);
+
     free(ssdp);
 }
 
@@ -89,12 +92,14 @@ ssdp_status_t ssdp_start(ssdp_t *ssdp)
 {
     int status;
 
+    log_message(LOG_LEVEL_DEBUG, "[SSDP] %s(): ssdp=%p\n", __func__, ssdp);
+
     ssdp_stop(ssdp);
 
     status = ssdp_sock_open(ssdp);
     if (status != SSDP_OK)
     {
-        fprintf(stderr, "Failed to open SSDP sockets err=%d!", status);
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to open socket (%d)!\n", status);
         return status;
     }
 
@@ -102,15 +107,13 @@ ssdp_status_t ssdp_start(ssdp_t *ssdp)
     if (status != 0)
     {
         ssdp->s_thread = 0;
-        fprintf(stderr, "can't create thread :[%s]\n", strerror(status));
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to create thread (%d)!\n", status);
         return SSDP_ERROR;
     }
 
 #ifdef _GNU_SOURCE
     pthread_setname_np(ssdp->s_thread, "ssdp_server");
 #endif
-
-    printf("SSDP service started.\n");
 
     return SSDP_OK;
 }
@@ -120,6 +123,8 @@ ssdp_status_t ssdp_stop(ssdp_t *ssdp)
     int status;
     void *retval;
 
+    log_message(LOG_LEVEL_DEBUG, "[SSDP] %s(): ssdp=%p\n", __func__, ssdp);
+
     if (ssdp->s_thread == 0)
     {
         return SSDP_OK;
@@ -128,14 +133,14 @@ ssdp_status_t ssdp_stop(ssdp_t *ssdp)
     status = pthread_cancel(ssdp->s_thread);
     if (status != 0)
     {
-        fprintf(stderr, "Failed to cancel SSDP thread!\n");
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to cancel thread (%d)!\n", status);
         return SSDP_ERROR;
     }
 
     status = pthread_join(ssdp->s_thread, &retval);
     if (status != 0)
     {
-        fprintf(stderr, "Failed to join SSDP thread!\n");
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to join thread (%d)!\n", status);
         return SSDP_ERROR;
     }
 
@@ -144,11 +149,9 @@ ssdp_status_t ssdp_stop(ssdp_t *ssdp)
     status = ssdp_sock_close(ssdp);
     if (status != SSDP_OK)
     {
-        fprintf(stderr, "Failed to close SSDP socket err=%d!\n", status);
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to close socket (%d)!\n", status);
         return status;
     }
-
-    fprintf(stdout, "SSDP service stopped.\n");
 
     return SSDP_OK;
 }
@@ -159,6 +162,8 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
     struct addrinfo hints;
     struct addrinfo *addr = NULL;
 
+    log_message(LOG_LEVEL_DEBUG, "[SSDP] %s(): ssdp=%p\n", __func__, ssdp);
+
     /* Resolve the multicast group address */
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = PF_UNSPEC;
@@ -167,7 +172,7 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
     status = getaddrinfo(SSDP_GROUP, SSDP_PORT, &hints, &addr);
     if (status != 0)
     {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to resolve multicast address (%d)!\n", status);
         goto exit;
     }
 
@@ -175,7 +180,7 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
     ssdp->s_sock = socket(addr->ai_family, addr->ai_socktype, 0);
     if (ssdp->s_sock < 0)
     {
-        perror("socket() failed");
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to create socket (%d)!\n", errno);
         status = -1;
         goto exit;
     }
@@ -187,7 +192,7 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
     status = setsockopt(ssdp->s_sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
     if (status != 0)
     {
-        perror("setsockopt");
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to set sock options (%d)!\n", status);
         goto exit;
     }
 
@@ -195,7 +200,7 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
     status = bind(ssdp->s_sock, addr->ai_addr, addr->ai_addrlen);
     if (status != 0)
     {
-        perror("bind() failed");
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to bind socket (%d)!\n", status);
         goto exit;
     }
 
@@ -220,7 +225,7 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
                             &request, sizeof(request));
         if (status != 0)
         {
-            perror("setsockopt() failed");
+            log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to join multicast group (%d)!\n", status);
             goto exit;
         }
     }
@@ -242,13 +247,14 @@ ssdp_status_t ssdp_sock_open(ssdp_t *ssdp)
                             &request, sizeof(request));
         if (status != 0)
         {
-            perror("setsockopt() failed");
+            log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to join multicast group (%d)!\n", status);
             goto exit;
         }
     }
     else
     {
-        perror("Neither IPv4 or IPv6");
+        log_message(LOG_LEVEL_ERROR, "[SSDP] Unknown address type (family=%d, len=%d)!\n",
+                    addr->ai_family, addr->ai_addrlen);
         status = -1;
         goto exit;
     }
@@ -271,6 +277,8 @@ exit:
 
 ssdp_status_t ssdp_sock_close(ssdp_t *ssdp)
 {
+    log_message(LOG_LEVEL_DEBUG, "[SSDP] %s(): ssdp=%p\n", __func__, ssdp);
+
     if (ssdp->s_sock != -1)
     {
         close(ssdp->s_sock);
@@ -285,6 +293,8 @@ void *ssdp_run(void *arg)
     ssdp_t *ssdp = arg;
     char buf[1024];
     int len;
+
+    log_message(LOG_LEVEL_DEBUG, "[SSDP] %s(): ssdp=%p\n", __func__, ssdp);
 
     struct sockaddr_storage clientaddr;
     socklen_t addrlen;
@@ -313,20 +323,21 @@ void *ssdp_run(void *arg)
                     clientport, sizeof(clientport),
                     NI_NUMERICHOST | NI_NUMERICSERV | NI_NOFQDN);
 
-        printf("Received request from host=[%s] port=[%s]\n", clienthost, clientport);
+        log_message(LOG_LEVEL_DEBUG, "[SSDP] Request from [%s]:%s len=%d\n",
+                    clienthost, clientport, len);
 
-        puts(buf);
+        log_message(LOG_LEVEL_TRACE, "----------\n%s\n----------\n", buf);
 
         if (ssdp_request_is_valid(buf))
         {
             len = snprintf(buf, sizeof(buf), SSDP_RESPONSE);
-            puts(buf);
 
+            log_message(LOG_LEVEL_DEBUG, "[SSDP] Sending response len=%d\n", len);
             len = sendto(ssdp->s_sock, buf, len, 0,
                         (struct sockaddr *)&clientaddr, sizeof(clientaddr));
             if (len < 0)
             {
-                perror("sendto error:: \n");
+                log_message(LOG_LEVEL_ERROR, "[SSDP] Failed to send response (%d)!\n", len);
             }
         }
     }
@@ -339,6 +350,8 @@ int ssdp_request_is_valid(char *buf)
     char *line;
     char *saveptr;
     int i = 0;
+
+    log_message(LOG_LEVEL_DEBUG, "[SSDP] %s(): buf=%p\n", __func__, buf);
 
     line = strtok_r(buf, "\r\n", &saveptr);
 

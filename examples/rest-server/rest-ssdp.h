@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2017 8devices
+ * Copyright (c) 2018 8devices
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 
-#ifndef EXAMPLES_REST_SERVER_REST_SSDP_H_
-#define EXAMPLES_REST_SERVER_REST_SSDP_H_
+#ifndef REST_SSDP_H_
+#define REST_SSDP_H_
 
 typedef enum
 {
@@ -44,4 +44,4 @@ void    ssdp_free(ssdp_t *ssdp);
 ssdp_status_t ssdp_start(ssdp_t *ssdp);
 ssdp_status_t ssdp_stop(ssdp_t *ssdp);
 
-#endif /* EXAMPLES_REST_SERVER_REST_SSDP_H_ */
+#endif /* REST_SSDP_H_ */

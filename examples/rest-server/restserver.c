@@ -359,6 +359,8 @@ int main(int argc, char *argv[])
     }
 
     /* SSDP service section */
+    log_message(LOG_LEVEL_INFO, "Starting SSDP service...\n");
+
     memset(&ssdp_params, 0, sizeof(ssdp_params));
     ssdp_params.coap_port = coap_port;
 
@@ -374,8 +376,6 @@ int main(int argc, char *argv[])
         log_message(LOG_LEVEL_FATAL, "Failed to start SSDP service!\n");
         return -1;
     }
-
-    log_message(LOG_LEVEL_INFO, "Started SSDP service.\n");
 
     /* Main section */
     while (!restserver_quit)
